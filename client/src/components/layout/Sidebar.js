@@ -7,10 +7,8 @@ function Sidebar() {
   const menuItems = [
     { path: '/', icon: 'bi-grid-1x2-fill', label: 'Dashboard' },
     { path: '/proyectos', icon: 'bi-folder-fill', label: 'Proyectos' },
-    { path: '/comunicacion', icon: 'bi-chat-left-dots-fill', label: 'Comunicación' },
-    { path: '/social', icon: 'bi-people-fill', label: 'Redes Sociales' },
-    { path: '/cliente', icon: 'bi-people-fill', label: 'Portal de Cliente' },
-    { path: '/reportes', icon: 'bi-graph-up', label: 'Reportes' },
+    { path: '/crm', icon: 'bi-people-fill', label: 'CRM' },
+    { path: '/reportes', icon: 'bi-graph-up', label: 'Reportes y Analíticas' },
   ];
 
   const teamMembers = [

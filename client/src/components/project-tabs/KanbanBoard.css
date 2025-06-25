@@ -1,0 +1,61 @@
+/* Estilos para el drag & drop */
+.task-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.task-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+.task-card:active {
+  cursor: grabbing !important;
+}
+
+/* Feedback visual durante el drag */
+.drag-over {
+  background-color: rgba(48, 1, 255, 0.05) !important;
+  border: 2px dashed #3001ff !important;
+  transform: scale(1.02);
+  transition: all 0.2s ease;
+}
+
+/* Animaciones de las tarjetas */
+.task-card {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mejorar el aspecto de los avatares */
+.rounded-circle {
+  transition: transform 0.2s ease;
+}
+
+.rounded-circle:hover {
+  transform: scale(1.1);
+}
+
+/* Responsive para móviles */
+@media (max-width: 768px) {
+  .task-card {
+    margin-bottom: 0.75rem;
+  }
+  
+  .card-title {
+    font-size: 0.9rem;
+  }
+  
+  .card-text {
+    font-size: 0.8rem;
+  }
+}

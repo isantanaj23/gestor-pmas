@@ -1,8 +1,12 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 function ProjectsPage() {
+  const navigate = useNavigate();
+
   const projects = [
     {
+      id: 'proyecto-alpha',
       title: 'Proyecto Alpha',
       description: 'Sistema de gestión empresarial con módulos de CRM y facturación.',
       status: 'Activo',
@@ -11,6 +15,7 @@ function ProjectsPage() {
       members: 5
     },
     {
+      id: 'ecommerce-beta',
       title: 'E-commerce Beta',
       description: 'Plataforma de comercio electrónico con integración de pagos.',
       status: 'Pausado',
@@ -19,6 +24,7 @@ function ProjectsPage() {
       members: 3
     },
     {
+      id: 'app-movil',
       title: 'App Móvil',
       description: 'Aplicación nativa para iOS y Android con sincronización.',
       status: 'Completado',
@@ -37,6 +43,10 @@ function ProjectsPage() {
     }
   };
 
+  const handleProjectClick = (projectId) => {
+    navigate(`/proyecto/${projectId}`);
+  };
+
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -53,7 +63,11 @@ function ProjectsPage() {
       <div className="row">
         {projects.map((project, index) => (
           <div key={index} className="col-lg-4 col-md-6 mb-4">
-            <div className="card h-100 shadow-sm">
+            <div 
+              className="card h-100 shadow-sm"
+              style={{ cursor: 'pointer' }}
+              onClick={() => handleProjectClick(project.id)}
+            >
               <div className="card-body">
                 <div className="d-flex justify-content-between align-items-start mb-3">
                   <div>

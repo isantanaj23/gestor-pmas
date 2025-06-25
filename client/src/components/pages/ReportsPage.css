@@ -1,0 +1,245 @@
+/* ReportsPage.css */
+.reports-page {
+  padding: 1rem;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+/* KPI Cards */
+.reports-kpi-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  height: 100%;
+}
+
+.reports-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.reports-kpi-card .card-body {
+  padding: 1.5rem;
+}
+
+.reports-kpi-card h3 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.reports-kpi-card h6 {
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* Chart Cards */
+.reports-chart-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.reports-chart-card .card-header {
+  background: white;
+  border-bottom: 2px solid #f8f9fa;
+  padding: 1.25rem 1.5rem;
+}
+
+.reports-chart-card .card-body {
+  padding: 1.5rem;
+}
+
+/* Table Cards */
+.reports-table-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.reports-table-card .card-header {
+  background: white;
+  border-bottom: 2px solid #f8f9fa;
+  padding: 1.25rem 1.5rem;
+}
+
+.reports-table-card .table {
+  margin-bottom: 0;
+}
+
+.reports-table-card .table th {
+  border-top: none;
+  font-weight: 600;
+  color: #6c757d;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reports-table-card .table td {
+  vertical-align: middle;
+  border-color: #f8f9fa;
+}
+
+/* Summary Card */
+.reports-summary-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.reports-summary-card .card-header {
+  background: linear-gradient(135deg, #3001ff 0%, #964ef9 100%);
+  color: white;
+  border-bottom: none;
+  padding: 1.25rem 1.5rem;
+}
+
+.reports-summary-card .card-header h6 {
+  color: white;
+  margin-bottom: 0;
+}
+
+.reports-summary-card .card-body {
+  padding: 2rem 1.5rem;
+}
+
+/* Summary Metrics */
+.summary-metric {
+  text-align: center;
+  padding: 1rem;
+  border-radius: 8px;
+  background: #f8f9fa;
+  margin-bottom: 1rem;
+  transition: all 0.2s ease;
+}
+
+.summary-metric:hover {
+  background: #e9ecef;
+  transform: translateY(-1px);
+}
+
+.metric-label {
+  font-size: 0.85rem;
+  color: #6c757d;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metric-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 0.25rem;
+}
+
+.metric-change {
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.metric-change.positive {
+  color: #28a745;
+}
+
+.metric-change.negative {
+  color: #dc3545;
+}
+
+.metric-change.neutral {
+  color: #6c757d;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-overlay p {
+  margin-top: 1rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .reports-page {
+    padding: 0.5rem;
+  }
+  
+  .reports-kpi-card h3 {
+    font-size: 1.5rem;
+  }
+  
+  .summary-metric {
+    margin-bottom: 0.5rem;
+  }
+  
+  .metric-value {
+    font-size: 1.5rem;
+  }
+}
+
+/* Animations */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reports-kpi-card,
+.reports-chart-card,
+.reports-table-card,
+.reports-summary-card {
+  animation: slideInUp 0.3s ease-out;
+}
+
+/* Scrollbar personalizado */
+.table-responsive::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

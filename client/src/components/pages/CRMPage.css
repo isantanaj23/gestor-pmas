@@ -1,0 +1,633 @@
+/* ===== CRM PAGE STYLES ===== */
+
+.crm-page {
+  padding: 1rem;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+/* CRM KPI Cards */
+.crm-kpi-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  transition: all 0.3s ease;
+  border-left-width: 4px !important;
+}
+
+.crm-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.crm-kpi-card .card-body {
+  padding: 1.5rem;
+}
+
+.crm-kpi-card h3 {
+  font-weight: 700;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.crm-kpi-card h6 {
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
+/* Pipeline Board */
+.pipeline-board {
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+  min-height: 600px;
+}
+
+.pipeline-column {
+  min-width: 300px;
+  flex: 1;
+  max-width: 350px;
+}
+
+.pipeline-column .card {
+  height: fit-content;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: none;
+  border-radius: 12px;
+}
+
+.pipeline-column .card-header {
+  background: white;
+  border-bottom: 2px solid #f8f9fa;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: 12px 12px 0 0;
+}
+
+/* Prospect Cards */
+.prospect-card {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.prospect-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: #3001ff;
+}
+
+.prospect-card.border-success {
+  border-color: #28a745 !important;
+  background: rgba(40, 167, 69, 0.02);
+}
+
+.prospect-name {
+  color: #2c3e50;
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.prospect-contact {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.prospect-value {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #28a745;
+}
+
+.prospect-source {
+  background: #f8f9fa;
+  color: #495057;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid #dee2e6;
+}
+
+.prospect-priority {
+  padding: 0.2rem 0.6rem;
+  border-radius: 15px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.prospect-priority.high {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.prospect-priority.medium {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.prospect-priority.low {
+  background: rgba(23, 162, 184, 0.1);
+  color: #17a2b8;
+  border: 1px solid rgba(23, 162, 184, 0.3);
+}
+
+.prospect-priority.completed {
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+  border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.prospect-progress {
+  margin-top: 0.5rem;
+}
+
+.prospect-progress .progress {
+  height: 4px;
+  margin-bottom: 0.25rem;
+}
+
+/* Pipeline Status Badges */
+.pipeline-status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pipeline-status.lead {
+  background: rgba(108, 117, 125, 0.1);
+  color: #6c757d;
+  border: 1px solid rgba(108, 117, 125, 0.3);
+}
+
+.pipeline-status.contacted {
+  background: rgba(23, 162, 184, 0.1);
+  color: #17a2b8;
+  border: 1px solid rgba(23, 162, 184, 0.3);
+}
+
+.pipeline-status.proposal {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.pipeline-status.client {
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+  border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+/* Contacts Table */
+.contacts-table-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.contacts-table-card .card-header {
+  background: white;
+  border-bottom: 2px solid #f8f9fa;
+  padding: 1.25rem 1.5rem;
+}
+
+.contacts-table-card .table tr {
+  transition: all 0.2s ease;
+}
+
+.contacts-table-card .table tr:hover {
+  background-color: #f8f9fa;
+}
+
+/* Activity Timeline */
+.activity-timeline-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.activity-timeline-card .card-header {
+  background: white;
+  border-bottom: 2px solid #f8f9fa;
+  padding: 1.25rem 1.5rem;
+}
+
+.activity-timeline {
+  position: relative;
+}
+
+.activity-timeline::before {
+  content: '';
+  position: absolute;
+  left: 20px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #e9ecef;
+}
+
+.activity-item {
+  position: relative;
+  padding-left: 60px;
+  margin-bottom: 1.5rem;
+}
+
+.activity-icon {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid white;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.activity-header {
+  margin-bottom: 0.5rem;
+}
+
+.activity-header strong {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.activity-description {
+  color: #6c757d;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+}
+
+.activity-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Upcoming Activities */
+.upcoming-activities-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+
+.upcoming-activities-card .card-header {
+  background: white;
+  border-bottom: 2px solid #f8f9fa;
+  padding: 1.25rem 1.5rem;
+}
+
+.upcoming-activity {
+  padding: 0.75rem 0;
+}
+
+/* Navigation Pills */
+.nav-pills .nav-link {
+  color: #6c757d;
+  font-weight: 500;
+  padding: 0.75rem 1.25rem;
+  margin-right: 0.5rem;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.nav-pills .nav-link:hover {
+  background-color: rgba(48, 1, 255, 0.1);
+  color: #3001ff;
+}
+
+.nav-pills .nav-link.active {
+  background-color: #3001ff;
+  color: white;
+}
+
+.nav-pills .nav-link .badge {
+  font-size: 0.7rem;
+}
+
+/* Modal Enhancements */
+.modal.show {
+  z-index: 1050;
+}
+
+.modal-content {
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  border-radius: 12px 12px 0 0;
+}
+
+.modal-header .modal-title {
+  color: #3001ff;
+  font-weight: 600;
+}
+
+/* Form Controls */
+.form-control:focus,
+.form-select:focus {
+  border-color: #3001ff;
+  box-shadow: 0 0 0 0.2rem rgba(48, 1, 255, 0.1);
+}
+
+.form-control,
+.form-select {
+  border-radius: 8px;
+  border: 2px solid #e9ecef;
+  transition: all 0.3s ease;
+}
+
+/* Button Group for Priority */
+.btn-group .btn-check:checked + .btn-outline-danger {
+  background-color: #dc3545;
+  border-color: #dc3545;
+  color: white;
+}
+
+.btn-group .btn-check:checked + .btn-outline-warning {
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #000;
+}
+
+.btn-group .btn-check:checked + .btn-outline-info {
+  background-color: #17a2b8;
+  border-color: #17a2b8;
+  color: white;
+}
+
+/* Prospect Info Card (Modal) */
+.prospect-info-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+}
+
+.prospect-modal-name {
+  color: #2c3e50;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.prospect-modal-title {
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.prospect-modal-status {
+  margin-bottom: 1rem;
+}
+
+.prospect-modal-value {
+  margin-bottom: 1.5rem;
+}
+
+.contact-details {
+  font-size: 0.9rem;
+}
+
+.contact-details .bi {
+  width: 16px;
+}
+
+/* Conversion Stats */
+.conversion-stats {
+  background: rgba(40, 167, 69, 0.05) !important;
+  border: 1px solid rgba(40, 167, 69, 0.1);
+}
+
+/* Border Colors */
+.border-primary {
+  border-color: #3001ff !important;
+}
+
+.border-warning {
+  border-color: #ffc107 !important;
+}
+
+.border-info {
+  border-color: #17a2b8 !important;
+}
+
+.border-success {
+  border-color: #28a745 !important;
+}
+
+.border-4 {
+  border-width: 4px !important;
+}
+
+/* Text Colors */
+.text-primary {
+  color: #3001ff !important;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .crm-page {
+    padding: 0.5rem !important;
+  }
+  
+  .pipeline-board {
+    gap: 1rem;
+  }
+  
+  .pipeline-column {
+    min-width: 280px;
+  }
+  
+  .prospect-card {
+    padding: 0.75rem;
+  }
+  
+  .activity-item {
+    padding-left: 50px;
+  }
+  
+  .activity-icon {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .crm-kpi-card .card-body {
+    padding: 1rem;
+  }
+  
+  .crm-kpi-card h3 {
+    font-size: 1.5rem;
+  }
+  
+  .nav-pills .nav-link {
+    padding: 0.5rem 1rem;
+    margin-right: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .d-flex.justify-content-between.align-items-center {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+  }
+  
+  .d-flex.gap-2 {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 576px) {
+  .pipeline-board {
+    flex-direction: column;
+  }
+  
+  .pipeline-column {
+    min-width: 100%;
+    max-width: 100%;
+  }
+  
+  .btn-group {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .btn-group .btn {
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Scrollbar for Pipeline */
+.pipeline-board::-webkit-scrollbar {
+  height: 8px;
+}
+
+.pipeline-board::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.pipeline-board::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.pipeline-board::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Animation for cards */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.crm-kpi-card,
+.prospect-card,
+.activity-timeline-card,
+.contacts-table-card {
+  animation: slideInUp 0.3s ease-out;
+}
+
+/* Hover Effects */
+.prospect-card:hover .prospect-name {
+  color: #3001ff;
+}
+
+.activity-item:hover {
+  background-color: rgba(248, 249, 250, 0.5);
+  border-radius: 8px;
+  margin-left: -0.5rem;
+  margin-right: -0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Focus States */
+.prospect-card:focus-within {
+  outline: 2px solid rgba(48, 1, 255, 0.2);
+  outline-offset: -2px;
+}
+
+/* Icons */
+.bi {
+  vertical-align: -0.125em;
+}
+
+/* Page Header */
+.crm-page h1 {
+  color: #495057;
+  font-weight: 700;
+}
+
+.crm-page .border-bottom {
+  border-color: #dee2e6 !important;
+}
+
+/* Button Enhancements */
+.btn-primary {
+  background-color: #3001ff;
+  border-color: #3001ff;
+}
+
+.btn-primary:hover {
+  background-color: #2400cc;
+  border-color: #2400cc;
+}
+
+.btn-outline-primary:hover {
+  background-color: rgba(48, 1, 255, 0.1);
+  border-color: #3001ff;
+  color: #3001ff;
+}
+
+/* Table Improvements */
+.table th {
+  font-weight: 600;
+  color: #495057;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+  vertical-align: middle;
+}
+
+/* Badge Improvements */
+.badge {
+  font-weight: 500;
+}
+
+.badge.bg-light {
+  color: #495057 !important;
+  border: 1px solid #dee2e6;
+}
