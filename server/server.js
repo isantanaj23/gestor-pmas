@@ -96,6 +96,8 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/contacts', require('./routes/contacts'));   
 app.use('/api/activities', require('./routes/activities'))
+app.use('/api/dashboard', require('./routes/dashboard'));
+
 
 // =================================================================
 // MANEJO DE ERRORES
