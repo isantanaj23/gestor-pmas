@@ -1,472 +1,295 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import projectService from '../../services/projectService';
+import { Link } from 'react-router-dom';
 
-const ProjectsPage = () => {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  
+function ProjectsPage() {
   const [projects, setProjects] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: '',
-    description: '',
-    priority: 'medium',
-    status: 'active'
-  });
-  const [isCreating, setIsCreating] = useState(false);
 
-  // Cargar proyectos al montar el componente
+  // 🔥 DATOS DINÁMICOS DE PROYECTOS
+  const loadProjects = async () => {
+    try {
+      setLoading(true);
+      
+      // Simular datos de proyectos (luego conectarás con API GET /api/projects)
+      const projectsData = [
+        {
+          _id: 'proyecto-alpha',
+          name: 'Proyecto Alpha',
+          description: 'Sistema de gestión empresarial con módulos de CRM y facturación',
+          status: 'active',
+          progress: 75,
+          tasksCount: 14,
+          teamCount: 5,
+          team: [
+            { name: 'Ana García', avatar: null },
+            { name: 'Carlos López', avatar: null },
+            { name: 'Laura Martín', avatar: null }
+          ],
+          lastActivity: '2024-06-25'
+        },
+        {
+          _id: 'ecommerce-beta',
+          name: 'E-commerce Beta',
+          description: 'Plataforma de comercio electrónico con sistema de pagos integrado',
+          status: 'active',
+          progress: 45,
+          tasksCount: 8,
+          teamCount: 3,
+          team: [
+            { name: 'María Sánchez', avatar: null },
+            { name: 'Diego Ruiz', avatar: null }
+          ],
+          lastActivity: '2024-06-24'
+        },
+        {
+          _id: 'app-movil',
+          name: 'App Móvil',
+          description: 'Aplicación móvil multiplataforma con React Native',
+          status: 'active',
+          progress: 95,
+          tasksCount: 6,
+          teamCount: 2,
+          team: [
+            { name: 'Sofia Herrera', avatar: null },
+            { name: 'Juan Pablo', avatar: null }
+          ],
+          lastActivity: '2024-06-26'
+        },
+        {
+          _id: 'marketing-q3',
+          name: 'Marketing Q3',
+          description: 'Campaña de marketing digital para el tercer trimestre',
+          status: 'planning',
+          progress: 25,
+          tasksCount: 12,
+          teamCount: 4,
+          team: [
+            { name: 'Carmen Torres', avatar: null },
+            { name: 'Roberto Vega', avatar: null }
+          ],
+          lastActivity: '2024-06-23'
+        }
+      ];
+
+      setProjects(projectsData);
+      
+    } catch (err) {
+      setError(err.message);
+      console.error('Error al cargar proyectos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadProjects();
   }, []);
 
-  // Función para cargar proyectos
-  const loadProjects = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await projectService.getProjects();
-      
-      if (response.success) {
-        setProjects(response.data);
-      } else {
-        setError(response.message || 'Error cargando proyectos');
-      }
-    } catch (error) {
-      console.error('Error cargando proyectos:', error);
-      setError('Error de conexión al cargar proyectos');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Función para crear proyecto
-  const handleCreateProject = async (e) => {
-    e.preventDefault();
-    
-    if (isCreating) return;
-    
-    setIsCreating(true);
-
-    try {
-      const response = await projectService.createProject(newProject);
-      
-      if (response.success) {
-        // Agregar el nuevo proyecto a la lista
-        setProjects(prev => [response.data, ...prev]);
-        
-        // Limpiar formulario y cerrar modal
-        setNewProject({
-          name: '',
-          description: '',
-          priority: 'medium',
-          status: 'active'
-        });
-        setShowCreateModal(false);
-        
-        // Mostrar mensaje de éxito
-        console.log('✅ Proyecto creado exitosamente');
-      } else {
-        console.error('❌ Error creando proyecto:', response.message);
-        setError(response.message || 'Error creando proyecto');
-      }
-    } catch (error) {
-      console.error('❌ Error inesperado:', error);
-      setError('Error de conexión al crear proyecto');
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  // Función para ir a los detalles del proyecto
-  const handleProjectClick = (projectId) => {
-    navigate(`/proyecto/${projectId}`);
-  };
-
-  // Función para obtener color según estado
-  const getStatusColor = (status) => {
+  // Función para obtener el color del badge de estado
+  const getStatusBadge = (status) => {
     switch (status) {
-      case 'active': return 'success';
-      case 'completed': return 'primary';
-      case 'paused': return 'warning';
-      case 'cancelled': return 'danger';
-      default: return 'secondary';
+      case 'active':
+        return { class: 'bg-success', text: 'Activo' };
+      case 'planning':
+        return { class: 'bg-warning', text: 'Planificación' };
+      case 'completed':
+        return { class: 'bg-primary', text: 'Completado' };
+      case 'paused':
+        return { class: 'bg-secondary', text: 'Pausado' };
+      default:
+        return { class: 'bg-secondary', text: 'Desconocido' };
     }
   };
 
-  // Función para obtener color según prioridad
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'high': return 'danger';
-      case 'medium': return 'warning';
-      case 'low': return 'info';
-      default: return 'secondary';
-    }
+  // Función para obtener el color de la barra de progreso
+  const getProgressColor = (progress) => {
+    if (progress >= 80) return 'bg-success';
+    if (progress >= 50) return 'bg-warning';
+    return 'bg-danger';
   };
 
-  // Función para formatear fechas
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  // Mostrar loading
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="container-fluid p-4">
-        <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status" style={{ width: '3rem', height: '3rem' }}>
-              <span className="visually-hidden">Cargando...</span>
-            </div>
-            <h5 className="text-muted">Cargando Proyectos...</h5>
-            <p className="text-muted">Obteniendo tus proyectos</p>
+        <div className="d-flex justify-content-center align-items-center" style={{ height: '50vh' }}>
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Cargando proyectos...</span>
           </div>
         </div>
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <div className="container-fluid p-4">
+        <div className="alert alert-danger" role="alert">
+          <h4 className="alert-heading">Error</h4>
+          <p>{error}</p>
+          <button className="btn btn-outline-danger" onClick={loadProjects}>
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="container-fluid p-4 animate-fade-in">
+    <div className="container-fluid p-4">
       {/* Header */}
       <div className="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <div>
-          <h1 className="h2">
-            <i className="bi bi-folder-fill me-2 text-primary"></i>
-            Gestión de Proyectos
-          </h1>
-          <p className="text-muted mb-0">
-            Administra todos tus proyectos desde un solo lugar
-          </p>
-        </div>
-        <button 
-          type="button" 
-          className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <i className="bi bi-plus-lg me-1"></i>
-          Nuevo Proyecto
+        <h1 className="h2">Gestión de Proyectos</h1>
+        <button type="button" className="btn btn-primary">
+          <i className="bi bi-plus-lg me-1"></i>Nuevo Proyecto
         </button>
       </div>
 
-      {/* Error Alert */}
-      {error && (
-        <div className="alert alert-danger alert-dismissible fade show" role="alert">
-          <i className="bi bi-exclamation-triangle-fill me-2"></i>
-          {error}
-          <button 
-            type="button" 
-            className="btn-close" 
-            onClick={() => setError(null)}
-            aria-label="Close"
-          ></button>
-        </div>
-      )}
-
-      {/* Estadísticas rápidas */}
-      <div className="row mb-4">
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title text-primary">{projects.length}</h5>
-              <p className="card-text small text-muted">Total Proyectos</p>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title text-success">
-                {projects.filter(p => p.status === 'active').length}
-              </h5>
-              <p className="card-text small text-muted">Activos</p>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title text-warning">
-                {projects.filter(p => p.status === 'paused').length}
-              </h5>
-              <p className="card-text small text-muted">Pausados</p>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title text-primary">
-                {projects.filter(p => p.status === 'completed').length}
-              </h5>
-              <p className="card-text small text-muted">Completados</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <p className="text-muted mb-4">
+        Tienes {projects.length} proyecto{projects.length !== 1 ? 's' : ''} actualmente. 
+        Haz clic en cualquier proyecto para ver sus detalles.
+      </p>
 
       {/* Lista de Proyectos */}
-      {projects.length > 0 ? (
-        <div className="row">
-          {projects.map((project) => (
-            <div key={project._id} className="col-lg-4 col-md-6 mb-4">
-              <div 
-                className="card h-100 project-card cursor-pointer"
-                onClick={() => handleProjectClick(project._id)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="card-body d-flex flex-column">
+      <div className="row">
+        {projects.map(project => {
+          const statusBadge = getStatusBadge(project.status);
+          const progressColor = getProgressColor(project.progress);
+          
+          return (
+            <div key={project._id} className="col-lg-6 col-xl-4 mb-4">
+              <div className="card h-100 project-card-hover">
+                <div className="card-body">
                   {/* Header del proyecto */}
                   <div className="d-flex justify-content-between align-items-start mb-3">
                     <div className="flex-grow-1">
-                      <h5 className="card-title text-dark mb-1">{project.name}</h5>
+                      <h5 className="card-title mb-1">
+                        <Link 
+                          to={`/proyecto/${project._id}`}
+                          className="text-decoration-none text-dark fw-bold"
+                        >
+                          {project.name}
+                        </Link>
+                      </h5>
                       <p className="card-text text-muted small mb-2">
-                        {project.description || 'Sin descripción'}
+                        {project.description}
                       </p>
                     </div>
-                    <span className={`badge bg-${getStatusColor(project.status)} ms-2`}>
-                      {project.status}
+                    <span className={`badge ${statusBadge.class} ms-2`}>
+                      {statusBadge.text}
                     </span>
                   </div>
 
-                  {/* Métricas del proyecto */}
+                  {/* Progreso */}
+                  <div className="mb-3">
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <small className="text-muted">Progreso</small>
+                      <small className="fw-bold">{project.progress}%</small>
+                    </div>
+                    <div className="progress" style={{ height: '6px' }}>
+                      <div 
+                        className={`progress-bar ${progressColor}`}
+                        style={{ width: `${project.progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Métricas */}
                   <div className="row text-center mb-3">
                     <div className="col-4">
-                      <div className="fw-bold text-primary">{project.taskCount || 0}</div>
-                      <small className="text-muted">Tareas</small>
+                      <div className="border-end">
+                        <div className="fw-bold text-primary">{project.tasksCount}</div>
+                        <small className="text-muted">Tareas</small>
+                      </div>
                     </div>
                     <div className="col-4">
-                      <div className="fw-bold text-success">{project.progress || 0}%</div>
-                      <small className="text-muted">Progreso</small>
+                      <div className="border-end">
+                        <div className="fw-bold text-success">{project.teamCount}</div>
+                        <small className="text-muted">Miembros</small>
+                      </div>
                     </div>
                     <div className="col-4">
-                      <div className="fw-bold text-info">{project.teamMembers?.length || 0}</div>
-                      <small className="text-muted">Miembros</small>
+                      <div className="fw-bold text-warning">
+                        {Math.floor((Date.now() - new Date(project.lastActivity)) / (1000 * 60 * 60 * 24))}d
+                      </div>
+                      <small className="text-muted">Últ. actividad</small>
                     </div>
                   </div>
 
                   {/* Equipo */}
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="d-flex me-2">
-                      {project.teamMembers && project.teamMembers.slice(0, 3).map((member, index) => (
-                        <img
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div className="d-flex">
+                      {project.team.slice(0, 3).map((member, index) => (
+                        <div
                           key={index}
-                          src={member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&size=32`}
-                          className="rounded-circle border border-white"
+                          className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
                           style={{ 
-                            width: '32px', 
-                            height: '32px', 
+                            width: '28px', 
+                            height: '28px', 
+                            fontSize: '11px',
                             marginLeft: index > 0 ? '-8px' : '0',
-                            zIndex: 3 - index
+                            zIndex: 3 - index,
+                            border: '2px solid white'
                           }}
-                          alt={member.name}
                           title={member.name}
-                        />
+                        >
+                          {member.name.split(' ').map(n => n[0]).join('')}
+                        </div>
                       ))}
-                      {project.teamMembers && project.teamMembers.length > 3 && (
-                        <div 
-                          className="rounded-circle border border-white bg-light d-flex align-items-center justify-content-center"
+                      {project.teamCount > 3 && (
+                        <div
+                          className="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center"
                           style={{ 
-                            width: '32px', 
-                            height: '32px', 
+                            width: '28px', 
+                            height: '28px', 
+                            fontSize: '10px',
                             marginLeft: '-8px',
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold',
-                            color: '#6c757d'
+                            border: '2px solid white'
                           }}
                         >
-                          +{project.teamMembers.length - 3}
+                          +{project.teamCount - 3}
                         </div>
                       )}
                     </div>
-                    <small className="text-muted">
-                      {project.teamMembers?.length ? `${project.teamMembers.length} miembro${project.teamMembers.length > 1 ? 's' : ''}` : 'Sin equipo'}
-                    </small>
+                    
+                    <Link 
+                      to={`/proyecto/${project._id}`}
+                      className="btn btn-outline-primary btn-sm"
+                    >
+                      Ver Detalles <i className="bi bi-arrow-right"></i>
+                    </Link>
                   </div>
+                </div>
 
-                  {/* Barra de progreso */}
-                  <div className="progress mb-3" style={{ height: '8px' }}>
-                    <div
-                      className={`progress-bar bg-${getStatusColor(project.status)}`}
-                      role="progressbar"
-                      style={{ width: `${project.progress || 0}%` }}
-                      aria-valuenow={project.progress || 0}
-                    ></div>
-                  </div>
-
-                  {/* Footer del proyecto */}
-                  <div className="mt-auto">
-                    <div className="d-flex justify-content-between align-items-center">
-                      <span className={`badge bg-${getPriorityColor(project.priority)}`}>
-                        {project.priority} prioridad
-                      </span>
-                      <small className="text-muted">
-                        <i className="bi bi-calendar-event me-1"></i>
-                        {formatDate(project.createdAt)}
-                      </small>
-                    </div>
-                  </div>
+                {/* Hover effect */}
+                <div className="card-footer bg-transparent border-0 pt-0">
+                  <Link 
+                    to={`/proyecto/${project._id}`}
+                    className="btn btn-light w-100 btn-sm text-primary fw-medium"
+                  >
+                    <i className="bi bi-folder-open me-1"></i>
+                    Abrir Proyecto
+                  </Link>
                 </div>
               </div>
             </div>
-          ))}
-        </div>
-      ) : (
-        /* Estado vacío */
+          );
+        })}
+      </div>
+
+      {/* Estado vacío */}
+      {projects.length === 0 && (
         <div className="text-center py-5">
-          <i className="bi bi-folder-plus text-muted" style={{ fontSize: '4rem' }}></i>
-          <h3 className="text-muted mt-3">Sin proyectos</h3>
-          <p className="text-muted mb-4">
-            Comienza creando tu primer proyecto para organizar tu trabajo
-          </p>
-          <button 
-            className="btn btn-primary btn-lg"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <i className="bi bi-plus-lg me-2"></i>
-            Crear Mi Primer Proyecto
+          <i className="bi bi-folder2-open text-muted" style={{ fontSize: '4rem' }}></i>
+          <h3 className="text-muted mt-3">No hay proyectos</h3>
+          <p className="text-muted">Crea tu primer proyecto para comenzar</p>
+          <button className="btn btn-primary">
+            <i className="bi bi-plus-lg me-1"></i>Crear Primer Proyecto
           </button>
-        </div>
-      )}
-
-      {/* Modal de Crear Proyecto */}
-      {showCreateModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="bi bi-folder-plus me-2"></i>
-                  Crear Nuevo Proyecto
-                </h5>
-                <button 
-                  type="button" 
-                  className="btn-close" 
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={isCreating}
-                ></button>
-              </div>
-              
-              <form onSubmit={handleCreateProject}>
-                <div className="modal-body">
-                  {/* Nombre del proyecto */}
-                  <div className="mb-3">
-                    <label htmlFor="projectName" className="form-label">
-                      <i className="bi bi-card-text me-2"></i>
-                      Nombre del Proyecto *
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      id="projectName"
-                      value={newProject.name}
-                      onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="Ej: Rediseño de la página web"
-                      required
-                      disabled={isCreating}
-                    />
-                  </div>
-
-                  {/* Descripción */}
-                  <div className="mb-3">
-                    <label htmlFor="projectDescription" className="form-label">
-                      <i className="bi bi-text-paragraph me-2"></i>
-                      Descripción
-                    </label>
-                    <textarea
-                      className="form-control"
-                      id="projectDescription"
-                      rows="3"
-                      value={newProject.description}
-                      onChange={(e) => setNewProject(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Describe brevemente el proyecto..."
-                      disabled={isCreating}
-                    />
-                  </div>
-
-                  {/* Prioridad y Estado */}
-                  <div className="row">
-                    <div className="col-md-6">
-                      <label htmlFor="projectPriority" className="form-label">
-                        <i className="bi bi-flag me-2"></i>
-                        Prioridad
-                      </label>
-                      <select
-                        className="form-select"
-                        id="projectPriority"
-                        value={newProject.priority}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, priority: e.target.value }))}
-                        disabled={isCreating}
-                      >
-                        <option value="low">🟢 Baja</option>
-                        <option value="medium">🟡 Media</option>
-                        <option value="high">🔴 Alta</option>
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label htmlFor="projectStatus" className="form-label">
-                        <i className="bi bi-gear me-2"></i>
-                        Estado
-                      </label>
-                      <select
-                        className="form-select"
-                        id="projectStatus"
-                        value={newProject.status}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, status: e.target.value }))}
-                        disabled={isCreating}
-                      >
-                        <option value="active">🟢 Activo</option>
-                        <option value="paused">⏸️ Pausado</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="modal-footer">
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary"
-                    onClick={() => setShowCreateModal(false)}
-                    disabled={isCreating}
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="btn btn-primary"
-                    disabled={isCreating || !newProject.name.trim()}
-                  >
-                    {isCreating ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status">
-                          <span className="visually-hidden">Cargando...</span>
-                        </span>
-                        Creando...
-                      </>
-                    ) : (
-                      <>
-                        <i className="bi bi-check-lg me-2"></i>
-                        Crear Proyecto
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
         </div>
       )}
     </div>
   );
-};
+}
 
 export default ProjectsPage;
