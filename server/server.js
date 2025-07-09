@@ -27,13 +27,14 @@ app.use(
 // Compresión
 app.use(compression());
 
-// CORS - permitir requests desde el frontend
+// 🔥 CORS CORREGIDO - INCLUIR PATCH
 app.use(
   cors({
     origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], // 🔥 AGREGAR PATCH
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    exposedHeaders: ["Content-Range", "X-Content-Range"]
   })
 );
 
@@ -93,11 +94,10 @@ app.get("/api", (req, res) => {
 // Rutas de la API
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/projects', require('./routes/projects'));
-app.use('/api/tasks', require('./routes/tasks'));
+app.use('/api/tasks', require('./routes/tasks')); // 🔥 VERIFICAR QUE ESTA LÍNEA ESTÉ
 app.use('/api/contacts', require('./routes/contacts'));   
-app.use('/api/activities', require('./routes/activities'))
+app.use('/api/activities', require('./routes/activities'));
 app.use('/api/dashboard', require('./routes/dashboard'));
-
 
 // =================================================================
 // MANEJO DE ERRORES
@@ -145,6 +145,7 @@ const server = app.listen(PORT, () => {
   console.log(`⏰ Iniciado: ${new Date().toLocaleString("es-ES")}`);
   console.log("=".repeat(50));
   console.log("✅ Servidor listo para recibir requests");
+  console.log("✅ CORS configurado para métodos: GET, POST, PUT, DELETE, PATCH, OPTIONS");
   console.log("");
 });
 

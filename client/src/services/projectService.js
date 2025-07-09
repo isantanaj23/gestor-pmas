@@ -133,10 +133,10 @@ const projectService = {
     }
   },
 
-  // Agregar miembro al equipo
-  addTeamMember: async (projectId, userId) => {
+  // 🔥 AGREGAR MIEMBRO AL EQUIPO (con role)
+  addTeamMember: async (projectId, memberData) => {
     try {
-      const response = await API.post(`/projects/${projectId}/team`, { userId });
+      const response = await API.post(`/projects/${projectId}/team`, memberData);
       return {
         success: true,
         data: response.data.data,
@@ -151,6 +151,15 @@ const projectService = {
       };
     }
   },
+
+  // 🔥 REMOVER MIEMBRO - DESHABILITADO TEMPORALMENTE
+  // removeTeamMember: async (projectId, userId) => {
+  //   // Implementar cuando tengamos la ruta en el backend
+  //   return {
+  //     success: false,
+  //     message: 'Funcionalidad no disponible aún'
+  //   };
+  // },
 
   // Actualizar progreso del proyecto
   updateProgress: async (projectId, progress) => {

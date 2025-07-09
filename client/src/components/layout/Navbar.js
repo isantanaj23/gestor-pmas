@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+// client/src/components/layout/Navbar.js
+import React, { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import NotificationCenter from "../common/NotificationCenter"; // ← NUEVA IMPORTACIÓN
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -10,9 +12,9 @@ const Navbar = () => {
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/login');
+      navigate("/login");
     } catch (error) {
-      console.error('Error en logout:', error);
+      console.error("Error en logout:", error);
     }
   };
 
@@ -22,15 +24,15 @@ const Navbar = () => {
 
   // Cerrar menú al hacer click fuera
   const handleClickOutside = (e) => {
-    if (!e.target.closest('.dropdown')) {
+    if (!e.target.closest(".dropdown")) {
       setIsUserMenuOpen(false);
     }
   };
 
   React.useEffect(() => {
-    document.addEventListener('click', handleClickOutside);
+    document.addEventListener("click", handleClickOutside);
     return () => {
-      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener("click", handleClickOutside);
     };
   }, []);
 
@@ -45,7 +47,10 @@ const Navbar = () => {
 
         {/* Barra de búsqueda central */}
         <div className="d-none d-md-flex flex-grow-1 mx-4">
-          <div className="input-group" style={{ maxWidth: '400px', margin: '0 auto' }}>
+          <div
+            className="input-group"
+            style={{ maxWidth: "400px", margin: "0 auto" }}
+          >
             <span className="input-group-text bg-light border-end-0">
               <i className="bi bi-search text-muted"></i>
             </span>
@@ -53,26 +58,15 @@ const Navbar = () => {
               type="text"
               className="form-control border-start-0 bg-light"
               placeholder="Buscar proyectos, tareas, contactos..."
-              style={{ boxShadow: 'none' }}
+              style={{ boxShadow: "none" }}
             />
           </div>
         </div>
 
         {/* Usuario y notificaciones */}
         <div className="d-flex align-items-center gap-3">
-          {/* Notificaciones */}
-          <div className="position-relative">
-            <button 
-              className="btn btn-light rounded-circle p-2 position-relative"
-              title="Notificaciones"
-            >
-              <i className="bi bi-bell fs-5"></i>
-              <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style={{ fontSize: '0.6rem' }}>
-                3
-                <span className="visually-hidden">notificaciones</span>
-              </span>
-            </button>
-          </div>
+          {/* Notificaciones en tiempo real - REEMPLAZA EL BOTÓN ESTÁTICO */}
+          <NotificationCenter />
 
           {/* Menú de usuario */}
           <div className="dropdown">
@@ -84,52 +78,82 @@ const Navbar = () => {
               {/* Avatar del usuario */}
               <div className="position-relative">
                 <img
-                  src={user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Usuario')}&background=6f42c1&color=fff&size=40`}
+                  src={
+                    user?.avatar ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      user?.name || "Usuario"
+                    )}&background=6f42c1&color=fff&size=40`
+                  }
                   alt="Avatar"
                   className="rounded-circle"
-                  style={{ width: '40px', height: '40px', objectFit: 'cover' }}
+                  style={{ width: "40px", height: "40px", objectFit: "cover" }}
                 />
-                <span 
+                <span
                   className="position-absolute bottom-0 end-0 bg-success rounded-circle border border-white"
-                  style={{ width: '12px', height: '12px' }}
+                  style={{ width: "12px", height: "12px" }}
                   title="En línea"
                 ></span>
               </div>
 
               {/* Información del usuario */}
               <div className="d-none d-lg-block text-start">
-                <div className="fw-semibold text-dark" style={{ fontSize: '0.9rem' }}>
-                  {user?.name || 'Usuario'}
+                <div
+                  className="fw-semibold text-dark"
+                  style={{ fontSize: "0.9rem" }}
+                >
+                  {user?.name || "Usuario"}
                 </div>
                 <div className="text-muted small">
-                  {user?.role || 'Sin rol'}
+                  {user?.role || "Sin rol"}
                 </div>
               </div>
 
-              <i className={`bi ${isUserMenuOpen ? 'bi-chevron-up' : 'bi-chevron-down'} text-muted`}></i>
+              <i
+                className={`bi ${
+                  isUserMenuOpen ? "bi-chevron-up" : "bi-chevron-down"
+                } text-muted`}
+              ></i>
             </button>
 
             {/* Menú desplegable */}
             {isUserMenuOpen && (
-              <div className="dropdown-menu dropdown-menu-end show shadow" style={{ minWidth: '250px' }}>
+              <div
+                className="dropdown-menu dropdown-menu-end show shadow"
+                style={{ minWidth: "250px" }}
+              >
                 {/* Header del menú */}
                 <div className="dropdown-header">
                   <div className="d-flex align-items-center">
                     <img
-                      src={user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Usuario')}&background=6f42c1&color=fff&size=50`}
+                      src={
+                        user?.avatar ||
+                        `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                          user?.name || "Usuario"
+                        )}&background=6f42c1&color=fff&size=50`
+                      }
                       alt="Avatar"
                       className="rounded-circle me-3"
-                      style={{ width: '50px', height: '50px', objectFit: 'cover' }}
+                      style={{
+                        width: "50px",
+                        height: "50px",
+                        objectFit: "cover",
+                      }}
                     />
                     <div>
-                      <div className="fw-bold">{user?.name || 'Usuario'}</div>
-                      <div className="text-muted small">{user?.email || 'Sin email'}</div>
-                      <span className={`badge badge-sm mt-1 ${
-                        user?.role === 'admin' ? 'bg-danger' :
-                        user?.role === 'manager' ? 'bg-warning' :
-                        'bg-primary'
-                      }`}>
-                        {user?.role || 'Sin rol'}
+                      <div className="fw-bold">{user?.name || "Usuario"}</div>
+                      <div className="text-muted small">
+                        {user?.email || "Sin email"}
+                      </div>
+                      <span
+                        className={`badge badge-sm mt-1 ${
+                          user?.role === "admin"
+                            ? "bg-danger"
+                            : user?.role === "manager"
+                            ? "bg-warning"
+                            : "bg-primary"
+                        }`}
+                      >
+                        {user?.role || "Sin rol"}
                       </span>
                     </div>
                   </div>
@@ -142,19 +166,19 @@ const Navbar = () => {
                   <i className="bi bi-person me-2"></i>
                   Mi Perfil
                 </a>
-                
+
                 <a className="dropdown-item" href="/settings">
                   <i className="bi bi-gear me-2"></i>
                   Configuración
                 </a>
-                
+
                 <a className="dropdown-item" href="/help">
                   <i className="bi bi-question-circle me-2"></i>
                   Ayuda
                 </a>
 
                 {/* Opciones de admin */}
-                {(user?.role === 'admin' || user?.role === 'manager') && (
+                {(user?.role === "admin" || user?.role === "manager") && (
                   <>
                     <div className="dropdown-divider"></div>
                     <a className="dropdown-item" href="/admin">
@@ -167,7 +191,7 @@ const Navbar = () => {
                 <div className="dropdown-divider"></div>
 
                 {/* Logout */}
-                <button 
+                <button
                   className="dropdown-item text-danger"
                   onClick={handleLogout}
                 >

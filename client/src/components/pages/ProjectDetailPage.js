@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import projectService from '../../services/projectService';
+import taskService from '../../services/taskService';
 
 // Componentes de las pestañas
 import KanbanBoard from '../project-tabs/KanbanBoard';
@@ -18,188 +20,216 @@ function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ⭐ NUEVOS ESTADOS PARA GESTIÓN DE EQUIPO
+  // ⭐ ESTADOS PARA GESTIÓN DE EQUIPO (sin funcionalidad de remover por ahora)
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [availableUsers, setAvailableUsers] = useState([]);
-  const [newMemberData, setNewMemberData] = useState({ userId: '', role: 'viewer' });
+  const [newMemberData, setNewMemberData] = useState({ userId: '', role: 'developer' });
 
-  // 🔥 FUNCIÓN PARA CARGAR PROYECTO DINÁMICAMENTE
+  // 🔥 FUNCIÓN PARA CARGAR PROYECTO DESDE API REAL
   const loadProject = async () => {
     try {
       setLoading(true);
+      setError(null);
       
       console.log('🔍 Cargando proyecto con ID:', projectId);
       
-      // 🎯 Mapeo de IDs a datos reales (luego conectarás con API)
-      const projectsData = {
-        'proyecto-alpha': {
-          _id: 'proyecto-alpha',
-          name: 'Proyecto Alpha',
-          description: 'Sistema de gestión empresarial con módulos de CRM y facturación',
-          status: 'active',
-          progress: 75,
-          team: [
-            { _id: '1', name: 'Ana García', role: 'Developer', avatar: null, email: 'ana@empresa.com' },
-            { _id: '2', name: 'Carlos López', role: 'Manager', avatar: null, email: 'carlos@empresa.com' },
-            { _id: '3', name: 'Laura Martín', role: 'Designer', avatar: null, email: 'laura@empresa.com' }
-          ]
-        },
-        'ecommerce-beta': {
-          _id: 'ecommerce-beta',
-          name: 'E-commerce Beta',
-          description: 'Plataforma de comercio electrónico con sistema de pagos',
-          status: 'active',
-          progress: 45,
-          team: [
-            { _id: '4', name: 'María Sánchez', role: 'Developer', avatar: null, email: 'maria@empresa.com' },
-            { _id: '5', name: 'Diego Ruiz', role: 'Manager', avatar: null, email: 'diego@empresa.com' }
-          ]
-        },
-        'app-movil': {
-          _id: 'app-movil',
-          name: 'App Móvil',
-          description: 'Aplicación móvil multiplataforma con React Native',
-          status: 'active',
-          progress: 95,
-          team: [
-            { _id: '6', name: 'Sofia Herrera', role: 'Developer', avatar: null, email: 'sofia@empresa.com' },
-            { _id: '7', name: 'Juan Pablo', role: 'Designer', avatar: null, email: 'juan@empresa.com' }
-          ]
-        },
-        'marketing-q3': {
-          _id: 'marketing-q3',
-          name: 'Marketing Q3',
-          description: 'Campaña de marketing digital para el tercer trimestre',
-          status: 'planning',
-          progress: 25,
-          team: [
-            { _id: '8', name: 'Carmen Torres', role: 'Manager', avatar: null, email: 'carmen@empresa.com' },
-            { _id: '9', name: 'Roberto Vega', role: 'Designer', avatar: null, email: 'roberto@empresa.com' }
-          ]
-        }
-      };
-
-      console.log('📂 IDs disponibles:', Object.keys(projectsData));
+      // 🎯 LLAMADA REAL A LA API
+      const response = await projectService.getProject(projectId);
       
-      const projectData = projectsData[projectId];
+      console.log('✅ Respuesta del servidor:', response);
       
-      if (!projectData) {
-        console.error(`❌ Proyecto no encontrado para ID: ${projectId}`);
-        console.error('📂 IDs disponibles:', Object.keys(projectsData));
-        throw new Error(`Proyecto no encontrado: ${projectId}`);
+      if (response.success && response.data) {
+        setProject(response.data);
+        console.log('✅ Proyecto cargado:', response.data.name);
+        
+        // Cargar tareas del proyecto
+        await loadProjectTasks(projectId);
+      } else {
+        throw new Error(response.message || 'No se pudo cargar el proyecto');
       }
       
-      console.log('✅ Proyecto encontrado:', projectData.name);
-
-      setProject(projectData);
-      
-      // Tareas específicas por proyecto
-      const tasksData = {
-        'proyecto-alpha': [
-          { _id: '1', title: 'Configurar autenticación', status: 'completed', project: projectId },
-          { _id: '2', title: 'Diseñar UI/UX', status: 'in-progress', project: projectId },
-          { _id: '3', title: 'Implementar API REST', status: 'pending', project: projectId },
-          { _id: '4', title: 'Testing integración', status: 'completed', project: projectId }
-        ],
-        'ecommerce-beta': [
-          { _id: '5', title: 'Pasarela de pagos', status: 'in-progress', project: projectId },
-          { _id: '6', title: 'Catálogo productos', status: 'completed', project: projectId },
-          { _id: '7', title: 'Carrito compras', status: 'pending', project: projectId }
-        ],
-        'app-movil': [
-          { _id: '8', title: 'Publicar en stores', status: 'in-progress', project: projectId },
-          { _id: '9', title: 'Testing final', status: 'completed', project: projectId }
-        ]
-      };
-
-      setTasks(tasksData[projectId] || []);
-      
     } catch (err) {
-      setError(err.message);
-      console.error('Error al cargar proyecto:', err);
+      console.error('❌ Error al cargar proyecto:', err);
+      setError(err.message || 'Error al cargar el proyecto');
     } finally {
       setLoading(false);
     }
   };
 
-  // 🔥 CARGAR USUARIOS DISPONIBLES PARA AGREGAR AL EQUIPO
-  const loadAvailableUsers = async () => {
+  // 🔥 FUNCIÓN PARA CARGAR TAREAS DEL PROYECTO
+  const loadProjectTasks = async (projectId) => {
     try {
-      const users = [
-        { _id: '8', name: 'Roberto Vega', email: 'roberto@empresa.com', avatar: null },
-        { _id: '9', name: 'Carmen Torres', email: 'carmen@empresa.com', avatar: null },
-        { _id: '10', name: 'Fernando Ruiz', email: 'fernando@empresa.com', avatar: null },
-        { _id: '11', name: 'Patricia Luna', email: 'patricia@empresa.com', avatar: null }
-      ];
+      console.log('📋 Cargando tareas para proyecto:', projectId);
       
-      // Filtrar usuarios que NO están ya en el equipo
-      const currentTeamIds = project.team.map(member => member._id);
-      const available = users.filter(user => !currentTeamIds.includes(user._id));
+      // Llamada real a la API de tareas
+      const tasksResponse = await taskService.getTasksByProject(projectId);
       
-      setAvailableUsers(available);
+      if (tasksResponse.success && tasksResponse.data) {
+        setTasks(tasksResponse.data);
+        console.log('✅ Tareas cargadas:', tasksResponse.data.length);
+      } else {
+        console.log('ℹ️ No se encontraron tareas para este proyecto');
+        setTasks([]);
+      }
     } catch (err) {
-      console.error('Error al cargar usuarios:', err);
+      console.error('❌ Error al cargar tareas:', err);
+      // No marcamos como error fatal, solo log
+      setTasks([]);
     }
   };
+
+  // 🔥 CARGAR USUARIOS DISPONIBLES PARA AGREGAR AL EQUIPO
+  const loadAvailableUsers = async () => {
+  try {
+    console.log('👥 Cargando usuarios disponibles...');
+    
+    // 🔥 USAR LA URL COMPLETA CON EL PUERTO CORRECTO
+    const response = await fetch('http://localhost:3001/api/projects/debug/users', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('planifica_token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('📥 Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error response:', errorText);
+      throw new Error(`Error ${response.status}: ${errorText}`);
+    }
+    
+    const data = await response.json();
+    console.log('📋 Datos recibidos:', data);
+    
+    if (data.success) {
+      console.log('✅ Usuarios cargados:', data.data.length);
+      
+      // Filtrar usuarios que NO están ya en el equipo
+      const currentTeamEmails = project.team.map(member => 
+        member.user?.email || member.email
+      );
+      
+      const availableUsers = data.data.filter(user => 
+        !currentTeamEmails.includes(user.email)
+      );
+      
+      setAvailableUsers(availableUsers);
+      console.log('📋 Usuarios disponibles para agregar:', availableUsers.length);
+      
+      if (availableUsers.length === 0) {
+        console.log('⚠️ Todos los usuarios ya están en el equipo');
+      }
+    } else {
+      throw new Error(data.message || 'Error cargando usuarios');
+    }
+    
+  } catch (err) {
+    console.error('❌ Error cargando usuarios:', err);
+    
+    // Si no hay usuarios, ofrecer crear usuarios de prueba
+    const shouldCreateUsers = window.confirm(
+      'No se pudieron cargar usuarios o no existen usuarios disponibles. ¿Quieres crear usuarios de prueba?'
+    );
+    
+    if (shouldCreateUsers) {
+      try {
+        console.log('🔄 Creando usuarios de prueba...');
+        
+        // 🔥 USAR LA URL COMPLETA CON EL PUERTO CORRECTO
+        const createResponse = await fetch('http://localhost:3001/api/projects/debug/create-test-users', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('planifica_token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log('📥 Create response status:', createResponse.status);
+        
+        if (createResponse.ok) {
+          const createData = await createResponse.json();
+          console.log('✅ Usuarios de prueba creados:', createData);
+          alert(`✅ ${createData.created} usuarios de prueba creados`);
+          
+          // Recargar usuarios después de crearlos
+          setTimeout(() => loadAvailableUsers(), 1000);
+        } else {
+          const errorText = await createResponse.text();
+          console.error('❌ Error creating users:', errorText);
+          throw new Error(`Error ${createResponse.status}: ${errorText}`);
+        }
+      } catch (createErr) {
+        console.error('❌ Error creando usuarios de prueba:', createErr);
+        alert('Error creando usuarios de prueba: ' + createErr.message);
+      }
+    }
+  }
+};
 
   // 🔥 AGREGAR MIEMBRO AL EQUIPO
   const handleAddMember = async () => {
-    try {
-      if (!newMemberData.userId) {
-        alert('Por favor selecciona un usuario');
-        return;
-      }
+  try {
+    console.log('👥 Intentando agregar miembro...');
+    console.log('📋 Datos del formulario:', newMemberData);
+    console.log('📋 Proyecto actual:', project._id);
+    
+    // Validar datos
+    if (!newMemberData.userId || !newMemberData.role) {
+      alert('Por favor selecciona un usuario y un rol');
+      return;
+    }
 
-      const selectedUser = availableUsers.find(user => user._id === newMemberData.userId);
+    // Preparar datos para enviar
+    const memberData = {
+      userId: newMemberData.userId,
+      role: newMemberData.role
+    };
+    
+    console.log('📤 Enviando al servidor:', memberData);
+
+    // Llamada real a la API
+    const response = await projectService.addTeamMember(project._id, memberData);
+    
+    console.log('📥 Respuesta del servidor:', response);
+
+    if (response.success) {
+      console.log('✅ Miembro agregado exitosamente');
       
-      if (!selectedUser) {
-        alert('Usuario no encontrado');
-        return;
-      }
-
-      // Agregar al equipo (aquí luego conectarás con la API POST /api/projects/:id/team)
-      const newMember = {
-        ...selectedUser,
-        role: newMemberData.role
-      };
-
-      setProject(prev => ({
-        ...prev,
-        team: [...prev.team, newMember]
-      }));
-
-      // Cerrar modal y limpiar formulario
+      // Recargar el proyecto para obtener los datos actualizados
+      await loadProject();
+      
+      // Cerrar modal y resetear
       setShowAddMemberModal(false);
-      setNewMemberData({ userId: '', role: 'viewer' });
+      setNewMemberData({ userId: '', role: 'developer' });
       
-      console.log('✅ Miembro agregado:', newMember);
-      
-    } catch (err) {
-      console.error('Error al agregar miembro:', err);
-      alert('Error al agregar miembro al equipo');
+      alert('✅ Miembro agregado exitosamente!');
+    } else {
+      throw new Error(response.message || 'Error al agregar miembro');
     }
-  };
+  } catch (err) {
+    console.error('❌ Error completo:', {
+      message: err.message,
+      response: err.response,
+      status: err.response?.status,
+      data: err.response?.data
+    });
+    alert('Error al agregar miembro: ' + err.message);
+  }
+};
 
-  // 🔥 REMOVER MIEMBRO DEL EQUIPO
+  // 🔥 REMOVER MIEMBRO - DESHABILITADO TEMPORALMENTE
   const handleRemoveMember = async (memberId) => {
-    try {
-      if (window.confirm('¿Estás seguro de que quieres remover este miembro del equipo?')) {
-        setProject(prev => ({
-          ...prev,
-          team: prev.team.filter(member => member._id !== memberId)
-        }));
-        
-        console.log('✅ Miembro removido:', memberId);
-      }
-    } catch (err) {
-      console.error('Error al remover miembro:', err);
-      alert('Error al remover miembro del equipo');
-    }
+    alert('Funcionalidad de remover miembros no disponible aún. Se implementará próximamente.');
+    // TODO: Implementar cuando tengamos la ruta en el backend
   };
 
   // Cargar datos al montar el componente
   useEffect(() => {
-    loadProject();
+    if (projectId) {
+      loadProject();
+    }
   }, [projectId]);
 
   // Cargar usuarios disponibles cuando se abra el modal
@@ -211,7 +241,7 @@ function ProjectDetailPage() {
 
   // Calcular progreso basado en tareas
   const calculateProgress = () => {
-    if (!tasks || tasks.length === 0) return 0;
+    if (!tasks || tasks.length === 0) return project?.progress || 0;
     const completedTasks = tasks.filter(task => task.status === 'completed').length;
     return Math.round((completedTasks / tasks.length) * 100);
   };
@@ -244,7 +274,11 @@ function ProjectDetailPage() {
       <div className="container-fluid p-4">
         <div className="d-flex justify-content-center align-items-center" style={{ height: '50vh' }}>
           <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Cargando...</span>
+            <span className="visually-hidden">Cargando proyecto...</span>
+          </div>
+          <div className="ms-3">
+            <h5>Cargando proyecto...</h5>
+            <p className="text-muted">ID: {projectId}</p>
           </div>
         </div>
       </div>
@@ -256,11 +290,24 @@ function ProjectDetailPage() {
     return (
       <div className="container-fluid p-4">
         <div className="alert alert-danger" role="alert">
-          <h4 className="alert-heading">Error</h4>
-          <p>{error}</p>
-          <button className="btn btn-outline-danger" onClick={() => navigate('/proyectos')}>
-            Volver a Proyectos
-          </button>
+          <h4 className="alert-heading">❌ Error al cargar proyecto</h4>
+          <p><strong>Error:</strong> {error}</p>
+          <p><strong>ID del proyecto:</strong> {projectId}</p>
+          <hr />
+          <div className="d-flex gap-2">
+            <button 
+              className="btn btn-outline-danger" 
+              onClick={() => navigate('/proyectos')}
+            >
+              ← Volver a Proyectos
+            </button>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => window.location.reload()}
+            >
+              🔄 Reintentar
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -271,157 +318,189 @@ function ProjectDetailPage() {
     return (
       <div className="container-fluid p-4">
         <div className="alert alert-warning" role="alert">
-          <h4 className="alert-heading">Proyecto no encontrado</h4>
+          <h4 className="alert-heading">⚠️ Proyecto no encontrado</h4>
           <p>El proyecto que buscas no existe o no tienes permisos para verlo.</p>
+          <p><strong>ID buscado:</strong> {projectId}</p>
+          <hr />
           <button className="btn btn-outline-warning" onClick={() => navigate('/proyectos')}>
-            Volver a Proyectos
+            ← Volver a Proyectos
           </button>
         </div>
       </div>
     );
   }
 
+  const currentProgress = calculateProgress();
+
   return (
     <div className="container-fluid p-4">
-      {/* Header dinámico */}
-      <div className="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <div>
-          <h1 className="h2">{project.name}</h1>
-          <p className="text-muted mb-0">{project.description}</p>
-        </div>
-        <div className="d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-outline-secondary"
-            onClick={() => navigate('/proyectos')}
-          >
-            <i className="bi bi-arrow-left"></i> Volver a Proyectos
-          </button>
-          <button
-            type="button"
-            className="btn btn-success"
-            onClick={() => setShowAddMemberModal(true)}
-          >
-            <i className="bi bi-person-plus"></i> Agregar Miembro
-          </button>
-        </div>
-      </div>
-
-      {/* 🔥 INFORMACIÓN DEL PROYECTO Y EQUIPO */}
+      {/* Header del proyecto */}
       <div className="row mb-4">
-        <div className="col-md-8">
-          <div className="card">
-            <div className="card-body">
-              <h5 className="card-title">Información del Proyecto</h5>
-              <div className="row">
-                <div className="col-md-4">
-                  <small className="text-muted">Estado</small>
-                  <p className="mb-2">
-                    <span className={`badge ${project.status === 'active' ? 'bg-success' : 'bg-secondary'}`}>
-                      {project.status === 'active' ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </p>
+        <div className="col-12">
+          <div className="d-flex justify-content-between align-items-start mb-3">
+            <div>
+              <nav aria-label="breadcrumb">
+                <ol className="breadcrumb">
+                  <li className="breadcrumb-item">
+                    <button 
+                      className="btn btn-link p-0 text-decoration-none"
+                      onClick={() => navigate('/proyectos')}
+                    >
+                      Proyectos
+                    </button>
+                  </li>
+                  <li className="breadcrumb-item active">{project.name}</li>
+                </ol>
+              </nav>
+              <h1 className="display-6 fw-bold text-primary mb-2">{project.name}</h1>
+              <p className="text-muted mb-3">{project.description}</p>
+            </div>
+            <div className="d-flex gap-2">
+              <button className="btn btn-outline-primary">
+                <i className="bi bi-gear"></i> Configurar
+              </button>
+              <button 
+                className="btn btn-success"
+                onClick={() => setShowAddMemberModal(true)}
+              >
+                <i className="bi bi-person-plus"></i> Agregar Miembro
+              </button>
+            </div>
+          </div>
+
+          {/* Métricas del proyecto */}
+          <div className="row g-3 mb-4">
+            <div className="col-md-3">
+              <div className="card border-0 bg-light">
+                <div className="card-body text-center">
+                  <h5 className="card-title text-primary">Progreso</h5>
+                  <div className="progress mb-2">
+                    <div 
+                      className="progress-bar bg-primary" 
+                      style={{ width: `${currentProgress}%` }}
+                    ></div>
+                  </div>
+                  <span className="fw-bold">{currentProgress}%</span>
                 </div>
-                <div className="col-md-4">
-                  <small className="text-muted">Progreso</small>
-                  <p className="mb-2">{calculateProgress()}% completado</p>
+              </div>
+            </div>
+            <div className="col-md-3">
+              <div className="card border-0 bg-light">
+                <div className="card-body text-center">
+                  <h5 className="card-title text-success">Tareas</h5>
+                  <h3 className="fw-bold text-success">{tasks.length}</h3>
+                  <small className="text-muted">Total</small>
                 </div>
-                <div className="col-md-4">
-                  <small className="text-muted">Tareas totales</small>
-                  <p className="mb-2">{tasks.length} tareas</p>
+              </div>
+            </div>
+            <div className="col-md-3">
+              <div className="card border-0 bg-light">
+                <div className="card-body text-center">
+                  <h5 className="card-title text-info">Equipo</h5>
+                  <h3 className="fw-bold text-info">{project.team?.length || 0}</h3>
+                  <small className="text-muted">Miembros</small>
+                </div>
+              </div>
+            </div>
+            <div className="col-md-3">
+              <div className="card border-0 bg-light">
+                <div className="card-body text-center">
+                  <h5 className="card-title text-warning">Estado</h5>
+                  <span className={`badge bg-${project.status === 'active' ? 'success' : 'warning'} fs-6`}>
+                    {project.status === 'active' ? 'Activo' : project.status}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        
-        <div className="col-md-4">
-          <div className="card">
-            <div className="card-body">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="card-title mb-0">Equipo ({project.team.length})</h5>
-                <button 
-                  className="btn btn-sm btn-outline-primary"
-                  onClick={() => setShowAddMemberModal(true)}
-                >
-                  <i className="bi bi-plus"></i>
-                </button>
+
+          {/* Mostrar equipo actual */}
+          {project.team && project.team.length > 0 && (
+            <div className="card mb-4">
+              <div className="card-header">
+                <h5 className="mb-0">
+                  <i className="bi bi-people"></i> Equipo del Proyecto
+                </h5>
               </div>
-              
-              <div className="team-members">
-                {project.team.map(member => (
-                  <div key={member._id} className="d-flex justify-content-between align-items-center mb-2">
-                    <div className="d-flex align-items-center">
-                      <div 
-                        className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2"
-                        style={{ width: '32px', height: '32px', fontSize: '12px' }}
-                      >
-                        {member.name.split(' ').map(n => n[0]).join('')}
-                      </div>
-                      <div>
-                        <div className="fw-medium" style={{ fontSize: '14px' }}>{member.name}</div>
-                        <small className="text-muted">{member.role}</small>
+              <div className="card-body">
+                <div className="row">
+                  {project.team.map((member, index) => (
+                    <div key={member._id || index} className="col-md-4 mb-3">
+                      <div className="d-flex align-items-center">
+                        <div className="avatar-placeholder bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style={{width: '40px', height: '40px'}}>
+                          {member.user?.name?.charAt(0) || member.name?.charAt(0) || 'U'}
+                        </div>
+                        <div className="flex-grow-1">
+                          <h6 className="mb-0">{member.user?.name || member.name || 'Usuario'}</h6>
+                          <small className="text-muted">{member.role || 'developer'}</small>
+                        </div>
+                        <button 
+                          className="btn btn-outline-danger btn-sm"
+                          onClick={() => handleRemoveMember(member._id)}
+                          title="Remover miembro (próximamente)"
+                          disabled
+                        >
+                          <i className="bi bi-trash"></i>
+                        </button>
                       </div>
                     </div>
-                    <button 
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => handleRemoveMember(member._id)}
-                      title="Remover del equipo"
-                    >
-                      <i className="bi bi-x"></i>
-                    </button>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Pestañas de Navegación */}
-      <ul className="nav nav-tabs mt-2" role="tablist">
-        {tabs.map(tab => (
-          <li key={tab.id} className="nav-item" role="presentation">
-            <button
-              className={`nav-link ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-              type="button"
-              role="tab"
-            >
-              <i className={`bi ${tab.icon} me-1`}></i> {tab.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {/* Contenido de las Pestañas */}
-      <div className="tab-content pt-4">
-        {renderTabContent()}
+      {/* Navegación por pestañas */}
+      <div className="row mb-4">
+        <div className="col-12">
+          <ul className="nav nav-pills nav-fill bg-light rounded p-2">
+            {tabs.map(tab => (
+              <li className="nav-item" key={tab.id}>
+                <button 
+                  className={`nav-link ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <i className={`bi ${tab.icon} me-2`}></i>
+                  {tab.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      {/* 🔥 MODAL PARA AGREGAR MIEMBRO */}
+      {/* Contenido dinámico de las pestañas */}
+      <div className="row">
+        <div className="col-12">
+          {renderTabContent()}
+        </div>
+      </div>
+
+      {/* Modal para agregar miembro */}
       {showAddMemberModal && (
-        <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Agregar Miembro al Equipo</h5>
                 <button 
                   type="button" 
-                  className="btn-close" 
+                  className="btn-close"
                   onClick={() => setShowAddMemberModal(false)}
                 ></button>
               </div>
               <div className="modal-body">
                 <form>
                   <div className="mb-3">
-                    <label className="form-label">Seleccionar Usuario</label>
+                    <label className="form-label">Usuario</label>
                     <select 
                       className="form-select"
                       value={newMemberData.userId}
-                      onChange={(e) => setNewMemberData(prev => ({ ...prev, userId: e.target.value }))}
+                      onChange={(e) => setNewMemberData({...newMemberData, userId: e.target.value})}
                     >
-                      <option value="">-- Selecciona un usuario --</option>
+                      <option value="">Seleccionar usuario...</option>
                       {availableUsers.map(user => (
                         <option key={user._id} value={user._id}>
                           {user.name} ({user.email})
@@ -429,18 +508,17 @@ function ProjectDetailPage() {
                       ))}
                     </select>
                   </div>
-                  
                   <div className="mb-3">
-                    <label className="form-label">Rol en el Proyecto</label>
+                    <label className="form-label">Rol</label>
                     <select 
                       className="form-select"
                       value={newMemberData.role}
-                      onChange={(e) => setNewMemberData(prev => ({ ...prev, role: e.target.value }))}
+                      onChange={(e) => setNewMemberData({...newMemberData, role: e.target.value})}
                     >
-                      <option value="viewer">Viewer - Solo lectura</option>
-                      <option value="collaborator">Collaborator - Puede editar tareas</option>
-                      <option value="manager">Manager - Gestión completa</option>
-                      <option value="admin">Admin - Control total</option>
+                      <option value="developer">Developer</option>
+                      <option value="manager">Manager</option>
+                      <option value="designer">Designer</option>
+                      <option value="tester">Tester</option>
                     </select>
                   </div>
                 </form>
@@ -448,7 +526,7 @@ function ProjectDetailPage() {
               <div className="modal-footer">
                 <button 
                   type="button" 
-                  className="btn btn-secondary" 
+                  className="btn btn-secondary"
                   onClick={() => setShowAddMemberModal(false)}
                 >
                   Cancelar
@@ -458,7 +536,7 @@ function ProjectDetailPage() {
                   className="btn btn-primary"
                   onClick={handleAddMember}
                 >
-                  Agregar al Equipo
+                  Agregar Miembro
                 </button>
               </div>
             </div>

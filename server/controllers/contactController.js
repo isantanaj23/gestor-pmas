@@ -140,43 +140,35 @@ exports.createContact = async (req, res) => {
 // @access  Private
 exports.updateContact = async (req, res) => {
   try {
-    let contact = await Contact.findById(req.params.id);
-    
+    const contactId = req.params.id;
+    const updates = req.body;
+
+    const contact = await Contact.findByIdAndUpdate(
+      contactId,
+      updates,
+      { new: true, runValidators: true }
+    );
+
     if (!contact) {
       return res.status(404).json({
         success: false,
         message: 'Contacto no encontrado'
       });
     }
-    
-    // Verificar ownership
-    if (contact.owner.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'No tienes permisos para actualizar este contacto'
-      });
+
+    // 🔔 NOTIFICACIÓN EN TIEMPO REAL: Contacto actualizado
+    if (global.socketHandler) {
+      // Solo notificar al usuario propietario del contacto
+      global.socketHandler.notifyFollowUpDue(req.user.id, contact);
     }
-    
-    contact = await Contact.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    });
-    
+
     res.status(200).json({
       success: true,
       data: contact
     });
+
   } catch (error) {
-    console.error('Error al actualizar contacto:', error);
-    
-    if (error.name === 'ValidationError') {
-      const message = Object.values(error.errors).map(val => val.message);
-      return res.status(400).json({
-        success: false,
-        message: message
-      });
-    }
-    
+    console.error('Error actualizando contacto:', error);
     res.status(500).json({
       success: false,
       message: 'Error del servidor al actualizar contacto'

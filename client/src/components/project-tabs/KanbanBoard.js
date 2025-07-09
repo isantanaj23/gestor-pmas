@@ -1,123 +1,30 @@
-import React, { useState, useEffect } from 'react';
+// client/src/components/project-tabs/KanbanBoard.js
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import useSocket from '../../hooks/useSocket';
+import taskService from '../../services/taskService';
+import projectService from '../../services/projectService';
+import './KanbanBoard.css';
 
-const KanbanBoardSimple = ({ projectId, project }) => {
-  const [tasks, setTasks] = useState([]);
+const KanbanBoard = ({ projectId, project, tasks, onTasksUpdate }) => {
+  const { user } = useAuth();
+  const { joinProject, leaveProject, updateTask, newComment, on, off } = useSocket();
+  
+  // Estados locales
   const [isLoading, setIsLoading] = useState(true);
-
-  // 🎯 Datos simulados de tareas por proyecto
-  const getTasksForProject = (projId) => {
-    const allTasks = {
-      'proyecto-alpha': [
-        {
-          _id: '1',
-          title: 'Configurar autenticación JWT',
-          description: 'Implementar sistema de login y registro con JWT tokens',
-          status: 'completed',
-          priority: 'high',
-          assignedTo: { name: 'Ana García' },
-          dueDate: '2024-06-20'
-        },
-        {
-          _id: '2',
-          title: 'Diseñar interfaz de usuario',
-          description: 'Crear mockups y prototipos para la aplicación',
-          status: 'in-progress',
-          priority: 'medium',
-          assignedTo: { name: 'Laura Martín' },
-          dueDate: '2024-06-28'
-        },
-        {
-          _id: '3',
-          title: 'Implementar API REST',
-          description: 'Desarrollar endpoints para proyectos y tareas',
-          status: 'pending',
-          priority: 'high',
-          assignedTo: { name: 'Carlos López' },
-          dueDate: '2024-07-05'
-        },
-        {
-          _id: '4',
-          title: 'Testing de integración',
-          description: 'Pruebas completas del sistema',
-          status: 'review',
-          priority: 'medium',
-          assignedTo: { name: 'Ana García' },
-          dueDate: '2024-07-10'
-        }
-      ],
-      'ecommerce-beta': [
-        {
-          _id: '5',
-          title: 'Configurar pasarela de pagos',
-          description: 'Integrar Stripe para procesar pagos',
-          status: 'in-progress',
-          priority: 'high',
-          assignedTo: { name: 'María Sánchez' },
-          dueDate: '2024-06-30'
-        },
-        {
-          _id: '6',
-          title: 'Crear catálogo de productos',
-          description: 'Desarrollar sistema de gestión de productos',
-          status: 'completed',
-          priority: 'medium',
-          assignedTo: { name: 'Diego Ruiz' },
-          dueDate: '2024-06-25'
-        },
-        {
-          _id: '7',
-          title: 'Implementar carrito de compras',
-          description: 'Funcionalidad de añadir/quitar productos',
-          status: 'pending',
-          priority: 'medium',
-          assignedTo: { name: 'María Sánchez' },
-          dueDate: '2024-07-08'
-        }
-      ],
-      'app-movil': [
-        {
-          _id: '8',
-          title: 'Publicar en App Store',
-          description: 'Subir la aplicación a las tiendas',
-          status: 'in-progress',
-          priority: 'high',
-          assignedTo: { name: 'Sofia Herrera' },
-          dueDate: '2024-06-29'
-        },
-        {
-          _id: '9',
-          title: 'Testing final',
-          description: 'Pruebas en dispositivos reales',
-          status: 'completed',
-          priority: 'medium',
-          assignedTo: { name: 'Juan Pablo' },
-          dueDate: '2024-06-26'
-        }
-      ],
-      'marketing-q3': [
-        {
-          _id: '10',
-          title: 'Crear campaña en redes sociales',
-          description: 'Desarrollar contenido para Instagram y Facebook',
-          status: 'pending',
-          priority: 'medium',
-          assignedTo: { name: 'Carmen Torres' },
-          dueDate: '2024-07-15'
-        },
-        {
-          _id: '11',
-          title: 'Análisis de competencia',
-          description: 'Investigar estrategias de la competencia',
-          status: 'review',
-          priority: 'low',
-          assignedTo: { name: 'Roberto Vega' },
-          dueDate: '2024-07-01'
-        }
-      ]
-    };
-
-    return allTasks[projId] || [];
-  };
+  const [error, setError] = useState(null);
+  const [localTasks, setLocalTasks] = useState([]);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [newTaskData, setNewTaskData] = useState({
+    title: '',
+    description: '',
+    priority: 'medium',
+    assignedTo: '',
+    dueDate: '',
+    status: 'pending'
+  });
 
   // 🔄 Columnas del Kanban
   const columns = [
@@ -127,39 +34,147 @@ const KanbanBoardSimple = ({ projectId, project }) => {
     { id: 'completed', title: 'Completado', color: 'success', icon: 'bi-check-circle' }
   ];
 
-  // 🔥 Cargar tareas cuando cambie el proyecto
-  useEffect(() => {
-    console.log('🔍 Cargando tareas para:', projectId);
+  // 🔥 Cargar tareas reales del backend
+  const loadTasks = useCallback(async () => {
+    if (!projectId) return;
     
-    setIsLoading(true);
-    
-    // Simular carga mínima
-    setTimeout(() => {
-      const projectTasks = getTasksForProject(projectId);
-      console.log('✅ Tareas encontradas:', projectTasks.length);
-      setTasks(projectTasks);
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log('🔍 Cargando tareas para proyecto:', projectId);
+      
+  const response = await taskService.getTasksByProject(projectId);
+      
+      if (response.success) {
+        console.log('✅ Tareas cargadas:', response.data.length);
+        setLocalTasks(response.data);
+        if (onTasksUpdate) {
+          onTasksUpdate(response.data);
+        }
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (err) {
+      console.error('❌ Error cargando tareas:', err);
+      setError(err.message || 'Error cargando tareas');
+    } finally {
       setIsLoading(false);
-    }, 500);
-    
-  }, [projectId]);
+    }
+  }, [projectId, onTasksUpdate]);
+
+  // 🔌 Configurar Socket.io para notificaciones en tiempo real
+  useEffect(() => {
+    if (projectId) {
+      // Unirse al proyecto para recibir notificaciones
+      joinProject(projectId);
+      
+      // Listeners para notificaciones en tiempo real
+      const handleTaskUpdated = (data) => {
+        console.log('📝 Tarea actualizada en tiempo real:', data);
+        
+        setLocalTasks(prevTasks => 
+          prevTasks.map(task => 
+            task._id === data.taskId 
+              ? { ...task, ...data.update }
+              : task
+          )
+        );
+        
+        // Mostrar notificación
+        if (data.updatedBy.id !== user.id) {
+          console.log(`🔔 ${data.updatedBy.name} ${data.action} una tarea`);
+        }
+      };
+
+      const handleTaskMoved = (data) => {
+        console.log('🔄 Tarea movida en tiempo real:', data);
+        
+        setLocalTasks(prevTasks => 
+          prevTasks.map(task => 
+            task._id === data.taskId 
+              ? { 
+                  ...task, 
+                  status: data.newStatus,
+                  position: data.position 
+                }
+              : task
+          )
+        );
+        
+        if (data.movedBy.id !== user.id) {
+          console.log(`🔔 ${data.movedBy.name} movió una tarea a ${data.newStatus}`);
+        }
+      };
+
+      const handleTaskCreated = (data) => {
+        console.log('➕ Nueva tarea en tiempo real:', data);
+        
+        setLocalTasks(prevTasks => [...prevTasks, data.task]);
+        
+        if (data.createdBy !== user.name) {
+          console.log(`🔔 ${data.createdBy} creó una nueva tarea: ${data.task.title}`);
+        }
+      };
+
+      const handleNewComment = (data) => {
+        console.log('💬 Nuevo comentario en tiempo real:', data);
+        
+        setLocalTasks(prevTasks => 
+          prevTasks.map(task => 
+            task._id === data.taskId
+              ? {
+                  ...task,
+                  comments: [...(task.comments || []), data.comment]
+                }
+              : task
+          )
+        );
+      };
+
+      // Registrar listeners
+      on('task_updated', handleTaskUpdated);
+      on('task_moved', handleTaskMoved);
+      on('task_created', handleTaskCreated);
+      on('new_comment', handleNewComment);
+
+      // Cleanup al desmontar
+      return () => {
+        leaveProject(projectId);
+        off('task_updated', handleTaskUpdated);
+        off('task_moved', handleTaskMoved);
+        off('task_created', handleTaskCreated);
+        off('new_comment', handleNewComment);
+      };
+    }
+  }, [projectId, joinProject, leaveProject, on, off, user.id, user.name]);
+
+  // 🔥 Cargar tareas al montar
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
 
   // 🎨 Funciones de utilidad
   const getTasksByStatus = (status) => {
-    return tasks.filter(task => task.status === status);
+    const tasksToUse = localTasks.length > 0 ? localTasks : (tasks || []);
+    return tasksToUse.filter(task => task.status === status);
   };
 
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'high': return 'danger';
-      case 'medium': return 'warning';
-      case 'low': return 'info';
+      case 'urgent': return 'danger';
+      case 'high': return 'warning';
+      case 'medium': return 'info';
+      case 'low': return 'secondary';
       default: return 'secondary';
     }
   };
 
+  // 🖱️ Funciones de Drag & Drop
   const handleDragStart = (e, task) => {
     e.dataTransfer.setData('text/plain', task._id);
     e.target.style.opacity = '0.5';
+    console.log('🖱️ Iniciando drag de tarea:', task.title);
   };
 
   const handleDragEnd = (e) => {
@@ -168,18 +183,165 @@ const KanbanBoardSimple = ({ projectId, project }) => {
 
   const handleDragOver = (e) => {
     e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
   };
 
-  const handleDrop = (e, columnId) => {
+  const handleDragLeave = (e) => {
+    e.currentTarget.classList.remove('drag-over');
+  };
+
+  const handleDrop = async (e, newStatus) => {
     e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
     
     const taskId = e.dataTransfer.getData('text/plain');
-    const updatedTasks = tasks.map(task => 
-      task._id === taskId ? { ...task, status: columnId } : task
-    );
+    const task = localTasks.find(t => t._id === taskId);
     
-    setTasks(updatedTasks);
-    console.log(`✅ Tarea ${taskId} movida a ${columnId}`);
+    if (!task || task.status === newStatus) {
+      return; // No cambio necesario
+    }
+
+    console.log(`🔄 Moviendo tarea "${task.title}" a ${newStatus}`);
+
+    try {
+      // Actualización optimista
+      setLocalTasks(prevTasks => 
+        prevTasks.map(t => 
+          t._id === taskId 
+            ? { ...t, status: newStatus }
+            : t
+        )
+      );
+
+      // Emitir notificación en tiempo real a otros usuarios
+      updateTask(projectId, taskId, { status: newStatus }, 'moved');
+
+      // Persistir en backend
+      const response = await taskService.moveTask(taskId, newStatus);
+      
+      if (!response.success) {
+        throw new Error(response.message);
+      }
+
+      console.log('✅ Tarea movida exitosamente');
+      
+    } catch (error) {
+      console.error('❌ Error moviendo tarea:', error);
+      
+      // Revertir cambio optimista
+      setLocalTasks(prevTasks => 
+        prevTasks.map(t => 
+          t._id === taskId 
+            ? { ...t, status: task.status }
+            : t
+        )
+      );
+      
+      alert('Error al mover la tarea: ' + error.message);
+    }
+  };
+
+  // 📝 Funciones para modales
+  const handleCreateTask = async () => {
+  try {
+    console.log('➕ Creando nueva tarea:', newTaskData);
+    
+    // Validar que el título no esté vacío
+    if (!newTaskData.title || !newTaskData.title.trim()) {
+      alert('El título de la tarea es obligatorio');
+      return;
+    }
+    
+    // 🔥 AGREGAR EL PROJECT ID a los datos de la tarea
+    const taskDataWithProject = {
+      ...newTaskData,
+      project: projectId  // ← ESTO ES CRUCIAL
+    };
+    
+    console.log('📤 Enviando tarea con project ID:', taskDataWithProject);
+    
+    // 🔥 USAR taskService.createTask (ruta /api/tasks) en lugar de createProjectTask
+    const response = await taskService.createTask(taskDataWithProject);
+    
+    if (response.success) {
+      console.log('✅ Tarea creada exitosamente:', response.data);
+      
+      // Agregar a la lista local
+      setLocalTasks(prev => [...prev, response.data]);
+      
+      // Actualizar tasks en el componente padre si existe la función
+      if (onTasksUpdate) {
+        const updatedTasks = [...localTasks, response.data];
+        onTasksUpdate(updatedTasks);
+      }
+      
+      // Resetear formulario
+      setNewTaskData({
+        title: '',
+        description: '',
+        priority: 'medium',
+        assignedTo: '',
+        dueDate: '',
+        status: 'pending'
+      });
+      
+      // Cerrar modal
+      setShowTaskModal(false);
+      
+      console.log('✅ Formulario resetado y modal cerrado');
+      
+    } else {
+      throw new Error(response.message || 'Error al crear la tarea');
+    }
+  } catch (error) {
+    console.error('❌ Error creando tarea:', error);
+    alert('Error al crear la tarea: ' + (error.message || 'Error desconocido'));
+  }
+};
+
+  const handleEditTask = (task) => {
+    setSelectedTask(task);
+    setNewTaskData({
+      title: task.title,
+      description: task.description || '',
+      priority: task.priority,
+      assignedTo: task.assignedTo?._id || '',
+      dueDate: task.dueDate ? task.dueDate.split('T')[0] : '',
+      status: task.status
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateTask = async () => {
+    try {
+      console.log('📝 Actualizando tarea:', selectedTask._id, newTaskData);
+      
+      const response = await taskService.updateTask(selectedTask._id, newTaskData);
+      
+      if (response.success) {
+        console.log('✅ Tarea actualizada exitosamente');
+        
+        // Actualizar lista local
+        setLocalTasks(prev => 
+          prev.map(task => 
+            task._id === selectedTask._id 
+              ? { ...task, ...newTaskData }
+              : task
+          )
+        );
+        
+        // Emitir notificación en tiempo real
+        updateTask(projectId, selectedTask._id, newTaskData, 'updated');
+        
+        setShowEditModal(false);
+        setSelectedTask(null);
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error) {
+      console.error('❌ Error actualizando tarea:', error);
+      alert('Error al actualizar la tarea: ' + error.message);
+    }
   };
 
   // 🎯 Renders condicionales
@@ -196,6 +358,20 @@ const KanbanBoardSimple = ({ projectId, project }) => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="alert alert-danger" role="alert">
+        <h6 className="alert-heading">Error cargando tareas</h6>
+        <p className="mb-0">{error}</p>
+        <hr />
+        <button className="btn btn-sm btn-outline-danger" onClick={loadTasks}>
+          <i className="bi bi-arrow-clockwise me-1"></i>
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="kanban-container">
       {/* Header */}
@@ -203,10 +379,13 @@ const KanbanBoardSimple = ({ projectId, project }) => {
         <div>
           <h5 className="mb-1">📋 Tablero Kanban</h5>
           <small className="text-muted">
-            {project?.name || projectId} • {tasks.length} tareas totales
+            {project?.name || 'Proyecto'} • {localTasks.length} tareas totales
           </small>
         </div>
-        <button className="btn btn-primary btn-sm">
+        <button 
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowTaskModal(true)}
+        >
           <i className="bi bi-plus-lg me-1"></i>
           Nueva Tarea
         </button>
@@ -234,81 +413,94 @@ const KanbanBoardSimple = ({ projectId, project }) => {
               <div 
                 className="card-body p-2"
                 onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, column.id)}
                 style={{ minHeight: '400px' }}
               >
                 {getTasksByStatus(column.id).length === 0 ? (
-                  <div className="text-center py-4">
-                    <i className={`bi ${column.icon} text-muted display-6`}></i>
-                    <p className="text-muted mt-2">Sin tareas</p>
+                  <div className="text-center text-muted py-4">
+                    <i className={`bi ${column.icon} fs-1 d-block mb-2`}></i>
+                    <small>No hay tareas en {column.title.toLowerCase()}</small>
                   </div>
                 ) : (
                   getTasksByStatus(column.id).map(task => (
                     <div
                       key={task._id}
-                      className="card mb-2 shadow-sm border-start border-3"
-                      draggable="true"
+                      className="task-card card mb-2 shadow-sm border-0"
+                      draggable
                       onDragStart={(e) => handleDragStart(e, task)}
                       onDragEnd={handleDragEnd}
-                      style={{ 
-                        cursor: 'grab',
-                        borderLeftColor: `var(--bs-${getPriorityColor(task.priority)})`,
-                        transition: 'all 0.2s ease'
-                      }}
+                      style={{ cursor: 'grab' }}
                     >
                       <div className="card-body p-3">
-                        {/* Header tarea */}
+                        {/* Header de la tarjeta */}
                         <div className="d-flex justify-content-between align-items-start mb-2">
-                          <span className={`badge bg-${getPriorityColor(task.priority)} badge-sm`}>
-                            {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Media' : 'Baja'}
-                          </span>
+                          <h6 className="card-title mb-0 text-truncate" style={{ maxWidth: '80%' }}>
+                            {task.title}
+                          </h6>
+                          <div className="dropdown">
+                            <button 
+                              className="btn btn-sm btn-outline-secondary btn-circle"
+                              data-bs-toggle="dropdown"
+                            >
+                              <i className="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul className="dropdown-menu dropdown-menu-end">
+                              <li>
+                                <button 
+                                  className="dropdown-item"
+                                  onClick={() => handleEditTask(task)}
+                                >
+                                  <i className="bi bi-pencil me-2"></i>Editar
+                                </button>
+                              </li>
+                              <li><hr className="dropdown-divider" /></li>
+                              <li>
+                                <button className="dropdown-item text-danger">
+                                  <i className="bi bi-trash me-2"></i>Eliminar
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
                         </div>
-
-                        {/* Título */}
-                        <h6 className="card-title mb-2" style={{ fontSize: '14px' }}>
-                          {task.title}
-                        </h6>
 
                         {/* Descripción */}
                         {task.description && (
-                          <p className="card-text text-muted small mb-3" 
-                             style={{ 
-                               fontSize: '12px',
-                               display: '-webkit-box',
-                               WebkitLineClamp: 2,
-                               WebkitBoxOrient: 'vertical',
-                               overflow: 'hidden'
-                             }}>
-                            {task.description}
+                          <p className="card-text small text-muted mb-2">
+                            {task.description.length > 80 
+                              ? task.description.substring(0, 80) + '...'
+                              : task.description
+                            }
                           </p>
                         )}
 
-                        {/* Footer */}
-                        <div className="d-flex justify-content-between align-items-center">
-                          {/* Asignado */}
-                          {task.assignedTo && (
-                            <div className="d-flex align-items-center">
-                              <div
-                                className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2"
-                                style={{ width: '24px', height: '24px', fontSize: '10px' }}
-                                title={task.assignedTo.name}
-                              >
-                                {task.assignedTo.name.split(' ').map(n => n[0]).join('')}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Fecha */}
+                        {/* Prioridad */}
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <span className={`badge bg-${getPriorityColor(task.priority)} bg-opacity-20 text-${getPriorityColor(task.priority)}`}>
+                            {task.priority === 'urgent' ? 'Urgente' :
+                             task.priority === 'high' ? 'Alta' :
+                             task.priority === 'medium' ? 'Media' : 'Baja'}
+                          </span>
                           {task.dueDate && (
                             <small className="text-muted">
-                              <i className="bi bi-calendar-event me-1"></i>
-                              {new Date(task.dueDate).toLocaleDateString('es-ES', { 
-                                month: 'short', 
-                                day: 'numeric' 
-                              })}
+                              <i className="bi bi-calendar me-1"></i>
+                              {new Date(task.dueDate).toLocaleDateString('es-ES')}
                             </small>
                           )}
                         </div>
+
+                        {/* Asignado */}
+                        {task.assignedTo && (
+                          <div className="d-flex align-items-center">
+                            <img
+                              src={task.assignedTo.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(task.assignedTo.name)}&background=6f42c1&color=fff&size=24`}
+                              alt={task.assignedTo.name}
+                              className="rounded-circle me-2"
+                              style={{ width: '24px', height: '24px' }}
+                            />
+                            <small className="text-muted">{task.assignedTo.name}</small>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -319,15 +511,205 @@ const KanbanBoardSimple = ({ projectId, project }) => {
         ))}
       </div>
 
-      {/* Debug info */}
-      <div className="mt-4 p-3 bg-light rounded">
-        <small className="text-muted">
-          <strong>🔍 Debug:</strong> Proyecto: {projectId} | Tareas cargadas: {tasks.length} | 
-          Estado: {isLoading ? 'Cargando...' : 'Listo'}
-        </small>
-      </div>
+      {/* Modal Crear Tarea */}
+      {showTaskModal && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <i className="bi bi-plus-circle me-2"></i>
+                  Nueva Tarea
+                </h5>
+                <button 
+                  type="button" 
+                  className="btn-close"
+                  onClick={() => setShowTaskModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <form>
+                  <div className="mb-3">
+                    <label className="form-label">Título *</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={newTaskData.title}
+                      onChange={(e) => setNewTaskData({...newTaskData, title: e.target.value})}
+                      placeholder="Título de la tarea"
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Descripción</label>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={newTaskData.description}
+                      onChange={(e) => setNewTaskData({...newTaskData, description: e.target.value})}
+                      placeholder="Descripción de la tarea"
+                    ></textarea>
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Prioridad</label>
+                      <select 
+                        className="form-select"
+                        value={newTaskData.priority}
+                        onChange={(e) => setNewTaskData({...newTaskData, priority: e.target.value})}
+                      >
+                        <option value="low">Baja</option>
+                        <option value="medium">Media</option>
+                        <option value="high">Alta</option>
+                        <option value="urgent">Urgente</option>
+                      </select>
+                    </div>
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Estado</label>
+                      <select 
+                        className="form-select"
+                        value={newTaskData.status}
+                        onChange={(e) => setNewTaskData({...newTaskData, status: e.target.value})}
+                      >
+                        <option value="pending">Pendiente</option>
+                        <option value="in-progress">En Progreso</option>
+                        <option value="review">Revisión</option>
+                        <option value="completed">Completado</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Fecha de vencimiento</label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={newTaskData.dueDate}
+                      onChange={(e) => setNewTaskData({...newTaskData, dueDate: e.target.value})}
+                    />
+                  </div>
+                </form>
+              </div>
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary"
+                  onClick={() => setShowTaskModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-primary"
+                  onClick={handleCreateTask}
+                  disabled={!newTaskData.title.trim()}
+                >
+                  <i className="bi bi-plus-lg me-1"></i>
+                  Crear Tarea
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Tarea */}
+      {showEditModal && selectedTask && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <i className="bi bi-pencil me-2"></i>
+                  Editar Tarea
+                </h5>
+                <button 
+                  type="button" 
+                  className="btn-close"
+                  onClick={() => setShowEditModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <form>
+                  <div className="mb-3">
+                    <label className="form-label">Título *</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={newTaskData.title}
+                      onChange={(e) => setNewTaskData({...newTaskData, title: e.target.value})}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Descripción</label>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={newTaskData.description}
+                      onChange={(e) => setNewTaskData({...newTaskData, description: e.target.value})}
+                    ></textarea>
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Prioridad</label>
+                      <select 
+                        className="form-control"
+                        value={newTaskData.priority}
+                        onChange={(e) => setNewTaskData({...newTaskData, priority: e.target.value})}
+                      >
+                        <option value="low">Baja</option>
+                        <option value="medium">Media</option>
+                        <option value="high">Alta</option>
+                        <option value="urgent">Urgente</option>
+                      </select>
+                    </div>
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Estado</label>
+                      <select 
+                        className="form-control"
+                        value={newTaskData.status}
+                        onChange={(e) => setNewTaskData({...newTaskData, status: e.target.value})}
+                      >
+                        <option value="pending">Pendiente</option>
+                        <option value="in-progress">En Progreso</option>
+                        <option value="review">Revisión</option>
+                        <option value="completed">Completado</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Fecha de vencimiento</label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={newTaskData.dueDate}
+                      onChange={(e) => setNewTaskData({...newTaskData, dueDate: e.target.value})}
+                    />
+                  </div>
+                </form>
+              </div>
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary"
+                  onClick={() => setShowEditModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-primary"
+                  onClick={handleUpdateTask}
+                  disabled={!newTaskData.title.trim()}
+                >
+                  <i className="bi bi-check-lg me-1"></i>
+                  Actualizar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default KanbanBoardSimple;
+export default KanbanBoard;
