@@ -186,20 +186,67 @@ const taskService = {
   },
 
   // Agregar comentario a tarea
-  addComment: async (taskId, comment) => {
+  addTaskComment: async (taskId, commentText) => {
     try {
-      const response = await API.post(`/tasks/${taskId}/comment`, { text: comment });
+      console.log('💬 Agregando comentario a tarea:', taskId);
+      
+      const response = await API.post(`/tasks/${taskId}/comments`, { 
+        text: commentText 
+      });
+      
       return {
         success: true,
         data: response.data.data,
-        message: response.data.message,
+        message: response.data.message
       };
     } catch (error) {
-      console.error('Error agregando comentario:', error);
+      console.error('❌ Error agregando comentario:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Error agregando comentario',
-        error: error.response?.data?.error,
+        message: error.response?.data?.message || 'Error al agregar comentario'
+      };
+    }
+  },
+  // Editar comentario
+  editTaskComment: async (taskId, commentId, commentText) => {
+    try {
+      console.log('✏️ Editando comentario:', commentId);
+      
+      const response = await API.put(`/tasks/${taskId}/comments/${commentId}`, { 
+        text: commentText 
+      });
+      
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('❌ Error editando comentario:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al editar comentario'
+      };
+    }
+  },
+
+  // Eliminar comentario
+  deleteTaskComment: async (taskId, commentId) => {
+    try {
+      console.log('🗑️ Eliminando comentario:', commentId);
+      
+      const response = await API.delete(`/tasks/${taskId}/comments/${commentId}`);
+      
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('❌ Error eliminando comentario:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al eliminar comentario'
       };
     }
   },
@@ -306,7 +353,5 @@ export const deleteTask = async (taskId) => {
     };
   }
 };
-
-
 
 export default taskService;

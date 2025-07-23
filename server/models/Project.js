@@ -80,7 +80,28 @@ const ProjectSchema = new mongoose.Schema({
     notificationsEnabled: {
       type: Boolean,
       default: true
+    },
+    allowTaskCreation: {
+      type: Boolean,
+      default: true
+    },
+    requireApproval: {
+      type: Boolean,
+      default: false
+    },
+    autoAssignTasks: {
+      type: Boolean,
+      default: false
+    },
+    enableNotifications: {
+      type: Boolean,
+      default: true
+    },
+    publicProject: {
+      type: Boolean,
+      default: false
     }
+    
   },
   // Archivos del proyecto
   attachments: [{

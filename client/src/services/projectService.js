@@ -181,4 +181,34 @@ const projectService = {
   },
 };
 
+// Actualizar proyecto
+const updateProject = async (projectId, projectData) => {
+  try {
+    console.log('📝 === PROJECTSERVICE UPDATE ===');
+    console.log('📝 Project ID:', projectId);
+    console.log('📝 Data a enviar:', projectData);
+    
+    const response = await API.put(`/projects/${projectId}`, projectData);
+    
+    console.log('📥 Respuesta cruda:', response);
+    console.log('📥 Response data:', response.data);
+    
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message
+    };
+  } catch (error) {
+    console.error('❌ Error en projectService.updateProject:', error);
+    console.error('❌ Error response:', error.response);
+    console.error('❌ Error data:', error.response?.data);
+    
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Error al actualizar el proyecto'
+    };
+  }
+};
+
 export default projectService;
+

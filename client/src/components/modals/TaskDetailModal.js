@@ -1,7 +1,9 @@
 // client/src/components/modals/TaskDetailModal.js
 import React, { useState, useEffect } from 'react';
+import { Modal, Button, Form, Alert } from 'react-bootstrap'; // 🔥 AGREGAR Button y Form
 import API from '../../services/api';
 // import './TaskDetailModal.css';
+import taskService from '../../services/taskService';
 
 
 
@@ -11,6 +13,11 @@ const TaskDetailModal = ({ task, isOpen, onClose, onTaskUpdate, projectId, onDel
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+    const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [loadingComment, setLoadingComment] = useState(false);
   const [editForm, setEditForm] = useState({
     title: '',
     description: '',
@@ -45,6 +52,10 @@ const TaskDetailModal = ({ task, isOpen, onClose, onTaskUpdate, projectId, onDel
       
       if (response.data.success) {
         setTaskDetails(response.data.data);
+        const taskData = response.data.data;
+        setTaskDetails(taskData);
+        setComments(taskData.comments || []);
+
         setEditForm({
           title: response.data.data.title,
           description: response.data.data.description || '',
@@ -94,6 +105,110 @@ const TaskDetailModal = ({ task, isOpen, onClose, onTaskUpdate, projectId, onDel
       setLoading(false);
     }
   };
+
+
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    
+    if (!newComment.trim()) {
+      return;
+    }
+
+    setLoadingComment(true);
+
+    try {
+      const response = await taskService.addTaskComment(task._id, newComment.trim());
+      
+      if (response.success) {
+        // Agregar comentario a la lista local
+        setComments(prev => [...prev, response.data]);
+        setNewComment('');
+        console.log('✅ Comentario agregado exitosamente');
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error) {
+      console.error('❌ Error agregando comentario:', error);
+      alert('Error al agregar comentario: ' + error.message);
+    } finally {
+      setLoadingComment(false);
+    }
+  };
+
+
+   const handleEditComment = (comment) => {
+    setEditingCommentId(comment._id);
+    setEditingCommentText(comment.text);
+  };
+
+  const handleSaveEditComment = async (commentId) => {
+    if (!editingCommentText.trim()) {
+      return;
+    }
+
+    setLoadingComment(true);
+
+    try {
+      const response = await taskService.editTaskComment(
+        task._id, 
+        commentId, 
+        editingCommentText.trim()
+      );
+      
+      if (response.success) {
+        // Actualizar comentario en la lista local
+        setComments(prev => 
+          prev.map(comment => 
+            comment._id === commentId 
+              ? { ...comment, text: editingCommentText.trim(), isEdited: true }
+              : comment
+          )
+        );
+        
+        setEditingCommentId(null);
+        setEditingCommentText('');
+        console.log('✅ Comentario editado exitosamente');
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error) {
+      console.error('❌ Error editando comentario:', error);
+      alert('Error al editar comentario: ' + error.message);
+    } finally {
+      setLoadingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este comentario?')) {
+      return;
+    }
+
+    setLoadingComment(true);
+
+    try {
+      const response = await taskService.deleteTaskComment(task._id, commentId);
+      
+      if (response.success) {
+        // Remover comentario de la lista local
+        setComments(prev => prev.filter(comment => comment._id !== commentId));
+        console.log('✅ Comentario eliminado exitosamente');
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error) {
+      console.error('❌ Error eliminando comentario:', error);
+      alert('Error al eliminar comentario: ' + error.message);
+    } finally {
+      setLoadingComment(false);
+    }
+  };
+
+  const cancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
 
   const formatDate = (date) => {
     if (!date) return 'No definida';
@@ -323,6 +438,145 @@ const TaskDetailModal = ({ task, isOpen, onClose, onTaskUpdate, projectId, onDel
                 <p className="text-muted">No se pudieron cargar los detalles de la tarea</p>
               </div>
             )}
+
+
+            {/* Comentarios */}
+            <h6 className="mb-3">
+              <i className="bi bi-chat-left-text me-2"></i>
+              Comentarios ({comments.length})
+            </h6>
+            
+            {comments.length === 0 ? (
+              <div className="text-center text-muted py-3 mb-3">
+                <i className="bi bi-chat-square-dots fs-1"></i>
+                <p className="mt-2 mb-0">No hay comentarios aún</p>
+                <small>Sé el primero en comentar esta tarea</small>
+              </div>
+            ) : (
+              comments.map(comment => (
+                <div key={comment._id} className="d-flex mb-3">
+                  <div 
+                    className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3"
+                    style={{ width: '32px', height: '32px', fontSize: '14px', flexShrink: 0 }}
+                  >
+                    {comment.user?.avatar ? (
+                      <img 
+                        src={comment.user.avatar} 
+                        alt={comment.user.name}
+                        className="rounded-circle"
+                        style={{ width: '32px', height: '32px' }}
+                      />
+                    ) : (
+                      comment.user?.name?.charAt(0) || '?'
+                    )}
+                  </div>
+                  <div className="flex-grow-1">
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <div className="d-flex align-items-center">
+                        <strong className="small me-2">{comment.user?.name || 'Usuario'}</strong>
+                        <small className="text-muted">
+                          {new Date(comment.createdAt).toLocaleString('es-ES')}
+                          {comment.isEdited && (
+                            <span className="ms-1 text-muted">(editado)</span>
+                          )}
+                        </small>
+                      </div>
+                      
+                      {/* Botones de acción para comentarios propios */}
+                      {comment.user?._id === taskDetails?.createdBy?._id && (
+                        <div className="dropdown">
+                          <button 
+                            className="btn btn-sm btn-link text-muted p-0"
+                            data-bs-toggle="dropdown"
+                          >
+                            <i className="bi bi-three-dots"></i>
+                          </button>
+                          <ul className="dropdown-menu dropdown-menu-end">
+                            <li>
+                              <button 
+                                className="dropdown-item"
+                                onClick={() => handleEditComment(comment)}
+                                disabled={loadingComment}
+                              >
+                                <i className="bi bi-pencil me-2"></i>Editar
+                              </button>
+                            </li>
+                            <li>
+                              <button 
+                                className="dropdown-item text-danger"
+                                onClick={() => handleDeleteComment(comment._id)}
+                                disabled={loadingComment}
+                              >
+                                <i className="bi bi-trash me-2"></i>Eliminar
+                              </button>
+                            </li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Contenido del comentario */}
+                    {editingCommentId === comment._id ? (
+                      <div className="mt-2">
+                        <Form.Control
+                          as="textarea"
+                          rows={2}
+                          value={editingCommentText}
+                          onChange={(e) => setEditingCommentText(e.target.value)}
+                          className="mb-2"
+                        />
+                        <div className="d-flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="primary"
+                            onClick={() => handleSaveEditComment(comment._id)}
+                            disabled={loadingComment || !editingCommentText.trim()}
+                          >
+                            {loadingComment ? 'Guardando...' : 'Guardar'}
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="secondary"
+                            onClick={cancelEditComment}
+                            disabled={loadingComment}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-light p-2 rounded">
+                        {comment.text}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            
+            {/* Formulario para agregar comentario */}
+            <Form onSubmit={handleAddComment} className="mt-3">
+              <div className="input-group">
+                <Form.Control
+                  type="text"
+                  placeholder="Añadir un comentario..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  disabled={loadingComment}
+                />
+                <Button 
+                  type="submit" 
+                  variant="primary"
+                  disabled={loadingComment || !newComment.trim()}
+                >
+                  {loadingComment ? (
+                    <span className="spinner-border spinner-border-sm" role="status"></span>
+                  ) : (
+                    <i className="bi bi-send"></i>
+                  )}
+                </Button>
+              </div>
+            </Form>
           </div>
 
           {/* Footer del Modal */}

@@ -551,4 +551,172 @@ router.get('/debug/users', async (req, res) => {
   }
 });
 
+// @desc    Actualizar proyecto
+// @route   PUT /api/projects/:id
+// @access  Private
+router.put('/:id', async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const {
+      name,
+      description,
+      status,
+      priority,
+      startDate,
+      endDate,
+      budget,
+      settings
+    } = req.body;
+
+    console.log('📝 === ACTUALIZANDO PROYECTO ===');
+    console.log('📝 Project ID:', projectId);
+    console.log('📝 Usuario:', req.user.id);
+    console.log('📝 Datos recibidos:', JSON.stringify(req.body, null, 2));
+
+    const Project = require('../models/Project');
+    
+    // Verificar que el proyecto existe
+    const project = await Project.findById(projectId);
+    
+    if (!project) {
+      console.log('❌ Proyecto no encontrado:', projectId);
+      return res.status(404).json({
+        success: false,
+        message: 'Proyecto no encontrado'
+      });
+    }
+
+    console.log('✅ Proyecto encontrado:', project.name);
+
+    // Verificar permisos (solo owner o admin)
+    if (project.owner.toString() !== req.user.id && req.user.role !== 'admin') {
+      console.log('❌ Sin permisos. Owner:', project.owner.toString(), 'User:', req.user.id);
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para editar este proyecto'
+      });
+    }
+
+    console.log('✅ Permisos verificados');
+
+    // Actualizar campos básicos
+    if (name !== undefined) {
+      console.log('📝 Actualizando name:', name);
+      project.name = name;
+    }
+    if (description !== undefined) {
+      console.log('📝 Actualizando description:', description);
+      project.description = description;
+    }
+    if (status !== undefined) {
+      console.log('📝 Actualizando status:', status);
+      project.status = status;
+    }
+    if (priority !== undefined) {
+      console.log('📝 Actualizando priority:', priority);
+      project.priority = priority;
+    }
+    if (startDate !== undefined) {
+      console.log('📝 Actualizando startDate:', startDate);
+      project.startDate = startDate;
+    }
+    if (endDate !== undefined) {
+      console.log('📝 Actualizando endDate:', endDate);
+      project.endDate = endDate;
+    }
+    
+    // Actualizar presupuesto
+    if (budget) {
+      console.log('📝 Actualizando budget:', budget);
+      if (!project.budget) project.budget = {};
+      if (budget.allocated !== undefined) project.budget.allocated = budget.allocated;
+      if (budget.used !== undefined) project.budget.used = budget.used;
+    }
+    
+    // Actualizar configuraciones
+    if (settings) {
+      console.log('📝 Actualizando settings:', settings);
+      if (!project.settings) project.settings = {};
+      
+      if (settings.allowTaskCreation !== undefined) {
+        project.settings.allowTaskCreation = settings.allowTaskCreation;
+      }
+      if (settings.requireApproval !== undefined) {
+        project.settings.requireApproval = settings.requireApproval;
+      }
+      if (settings.autoAssignTasks !== undefined) {
+        project.settings.autoAssignTasks = settings.autoAssignTasks;
+      }
+      if (settings.enableNotifications !== undefined) {
+        project.settings.enableNotifications = settings.enableNotifications;
+      }
+      if (settings.publicProject !== undefined) {
+        project.settings.publicProject = settings.publicProject;
+      }
+    }
+
+    // Actualizar fecha de modificación
+    project.updatedAt = new Date();
+
+    console.log('💾 Guardando proyecto...');
+    
+    // Guardar cambios
+    await project.save();
+
+    console.log('✅ Proyecto guardado');
+
+    // Poblar datos para la respuesta
+    await project.populate('owner', 'name email avatar');
+    await project.populate('team.user', 'name email avatar');
+
+    console.log('✅ Proyecto actualizado exitosamente');
+
+    res.status(200).json({
+      success: true,
+      message: 'Proyecto actualizado exitosamente',
+      data: project
+    });
+
+  } catch (error) {
+    console.error('❌ Error actualizando proyecto:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error del servidor al actualizar proyecto',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+
+
+  // 🧪 RUTA TEMPORAL DE DEBUG
+router.put('/:id/debug', async (req, res) => {
+  try {
+    console.log('🧪 === DEBUG ROUTE ===');
+    console.log('🧪 Project ID:', req.params.id);
+    console.log('🧪 Usuario:', req.user?.id);
+    console.log('🧪 Body:', req.body);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Debug route funcionando correctamente',
+      data: {
+        projectId: req.params.id,
+        userId: req.user?.id,
+        bodyReceived: req.body,
+        timestamp: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('🧪 Error en debug route:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error en debug route',
+      error: error.message
+    });
+  }
+});
+
+
+  
+});
+
 module.exports = router;

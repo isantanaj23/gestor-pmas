@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import projectService from '../../services/projectService';
 import taskService from '../../services/taskService';
+import ProjectConfigModal from '../modals/ProjectConfigModal';
 
 // Componentes de las pestañas
 import KanbanBoard from '../project-tabs/KanbanBoard';
@@ -24,6 +25,9 @@ function ProjectDetailPage() {
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [newMemberData, setNewMemberData] = useState({ userId: '', role: 'developer' });
+
+  const [showConfigModal, setShowConfigModal] = useState(false);
+
 
   // 🔥 FUNCIÓN PARA CARGAR PROYECTO DESDE API REAL
   const loadProject = async () => {
@@ -225,6 +229,16 @@ function ProjectDetailPage() {
     // TODO: Implementar cuando tengamos la ruta en el backend
   };
 
+  const handleProjectUpdate = (updatedProject) => {
+  console.log('✅ Proyecto actualizado:', updatedProject);
+  setProject(updatedProject);
+
+  if (updatedProject.status === 'completed' || updatedProject.status === 'cancelled') {
+    // Opcional: recargar tareas o mostrar mensaje
+    console.log('📋 Proyecto cambió de estado, considera recargar tareas');
+  }
+};
+
   // Cargar datos al montar el componente
   useEffect(() => {
     if (projectId) {
@@ -356,7 +370,10 @@ function ProjectDetailPage() {
               <p className="text-muted mb-3">{project.description}</p>
             </div>
             <div className="d-flex gap-2">
-              <button className="btn btn-outline-primary">
+               <button 
+                className="btn btn-outline-primary"
+                onClick={() => setShowConfigModal(true)}
+              >
                 <i className="bi bi-gear"></i> Configurar
               </button>
               <button 
@@ -366,6 +383,15 @@ function ProjectDetailPage() {
                 <i className="bi bi-person-plus"></i> Agregar Miembro
               </button>
             </div>
+      {/* Modal de Configuración del Proyecto */}
+      <ProjectConfigModal
+        show={showConfigModal}
+        onHide={() => setShowConfigModal(false)}
+        project={project}
+        onProjectUpdate={handleProjectUpdate}
+      />
+
+
           </div>
 
           {/* Métricas del proyecto */}

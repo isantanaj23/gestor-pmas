@@ -316,4 +316,217 @@ router.delete('/:id', protect, async (req, res) => {
   }
 });
 
+// @desc    Agregar comentario a una tarea
+// @route   POST /api/tasks/:id/comments
+// @access  Private
+router.post('/:id/comments', async (req, res) => {
+  try {
+    const taskId = req.params.id;
+    const { text } = req.body;
+    const userId = req.user.id;
+
+    console.log('💬 Agregando comentario a tarea:', taskId);
+
+    // Validar texto del comentario
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'El comentario no puede estar vacío'
+      });
+    }
+
+    // Buscar la tarea
+    const task = await Task.findById(taskId).populate('project');
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tarea no encontrada'
+      });
+    }
+
+    // Verificar permisos (miembro del proyecto)
+    const project = await Project.findById(task.project._id);
+    const hasAccess = project.owner.toString() === userId ||
+                     project.team.some(member => member.user.toString() === userId) ||
+                     req.user.role === 'admin';
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para comentar en esta tarea'
+      });
+    }
+
+    // Crear comentario
+    const comment = {
+      user: userId,
+      text: text.trim(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isEdited: false
+    };
+
+    // Agregar comentario a la tarea
+    task.comments.push(comment);
+    await task.save();
+
+    // Poblar datos del comentario recién creado
+    await task.populate('comments.user', 'name email avatar');
+
+    const newComment = task.comments[task.comments.length - 1];
+
+    console.log('✅ Comentario agregado exitosamente');
+
+    res.status(201).json({
+      success: true,
+      message: 'Comentario agregado exitosamente',
+      data: newComment
+    });
+
+  } catch (error) {
+    console.error('❌ Error agregando comentario:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error del servidor al agregar comentario',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @desc    Editar comentario
+// @route   PUT /api/tasks/:taskId/comments/:commentId
+// @access  Private
+router.put('/:taskId/comments/:commentId', async (req, res) => {
+  try {
+    const { taskId, commentId } = req.params;
+    const { text } = req.body;
+    const userId = req.user.id;
+
+    console.log('✏️ Editando comentario:', commentId, 'en tarea:', taskId);
+
+    // Validar texto del comentario
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'El comentario no puede estar vacío'
+      });
+    }
+
+    // Buscar la tarea
+    const task = await Task.findById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tarea no encontrada'
+      });
+    }
+
+    // Buscar el comentario
+    const comment = task.comments.id(commentId);
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comentario no encontrado'
+      });
+    }
+
+    // Verificar que el usuario es el autor del comentario
+    if (comment.user.toString() !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Solo puedes editar tus propios comentarios'
+      });
+    }
+
+    // Actualizar comentario
+    comment.text = text.trim();
+    comment.updatedAt = new Date();
+    comment.isEdited = true;
+
+    await task.save();
+
+    // Poblar datos
+    await task.populate('comments.user', 'name email avatar');
+
+    console.log('✅ Comentario editado exitosamente');
+
+    res.status(200).json({
+      success: true,
+      message: 'Comentario editado exitosamente',
+      data: comment
+    });
+
+  } catch (error) {
+    console.error('❌ Error editando comentario:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error del servidor al editar comentario',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @desc    Eliminar comentario
+// @route   DELETE /api/tasks/:taskId/comments/:commentId
+// @access  Private
+router.delete('/:taskId/comments/:commentId', async (req, res) => {
+  try {
+    const { taskId, commentId } = req.params;
+    const userId = req.user.id;
+
+    console.log('🗑️ Eliminando comentario:', commentId, 'de tarea:', taskId);
+
+    // Buscar la tarea
+    const task = await Task.findById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tarea no encontrada'
+      });
+    }
+
+    // Buscar el comentario
+    const comment = task.comments.id(commentId);
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comentario no encontrado'
+      });
+    }
+
+    // Verificar permisos (autor del comentario o admin)
+    if (comment.user.toString() !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Solo puedes eliminar tus propios comentarios'
+      });
+    }
+
+    // Eliminar comentario
+    task.comments.pull(commentId);
+    await task.save();
+
+    console.log('✅ Comentario eliminado exitosamente');
+
+    res.status(200).json({
+      success: true,
+      message: 'Comentario eliminado exitosamente',
+      data: { deletedCommentId: commentId }
+    });
+
+  } catch (error) {
+    console.error('❌ Error eliminando comentario:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error del servidor al eliminar comentario',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 module.exports = router;
