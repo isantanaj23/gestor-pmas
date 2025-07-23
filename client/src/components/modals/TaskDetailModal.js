@@ -1,203 +1,421 @@
-import React, { useState } from 'react';
-import { Modal, Button, Form, Row, Col, Badge, ProgressBar } from 'react-bootstrap';
+// client/src/components/modals/TaskDetailModal.js
+import React, { useState, useEffect } from 'react';
+import API from '../../services/api';
+// import './TaskDetailModal.css';
 
-function TaskDetailModal({ show, onHide, task }) {
-  const [comments, setComments] = useState([
-    {
-      id: 1,
-      author: 'Laura Martín',
-      content: '¿Ya tenemos los assets finales para esta sección?',
-      time: 'hace 5 min',
-      avatar: 'L'
+
+
+
+const TaskDetailModal = ({ task, isOpen, onClose, onTaskUpdate, projectId, onDeleteTask }) => {
+  const [taskDetails, setTaskDetails] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    status: '',
+    priority: '',
+    dueDate: ''
+  });
+
+
+    console.log('🎭 TaskDetailModal props:', { 
+    task: task?._id, 
+    isOpen, 
+    onClose: typeof onClose, 
+    onTaskUpdate: typeof onTaskUpdate, 
+    projectId, 
+    onDeleteTask: typeof onDeleteTask
+  });
+
+  // Cargar detalles de la tarea cuando se abre el modal
+  useEffect(() => {
+    if (isOpen && task) {
+      loadTaskDetails();
     }
-  ]);
-  const [newComment, setNewComment] = useState('');
-  const [checklistItems, setChecklistItems] = useState([
-    { id: 1, text: 'Investigación de competidores', completed: true },
-    { id: 2, text: 'Creación de wireframes', completed: false },
-    { id: 3, text: 'Diseño de la propuesta visual', completed: false }
-  ]);
+  }, [isOpen, task]);
 
-  if (!task) return null;
-
-  const handleAddComment = (e) => {
-    e.preventDefault();
-    if (newComment.trim()) {
-      setComments([...comments, {
-        id: comments.length + 1,
-        author: 'Tú',
-        content: newComment,
-        time: 'ahora',
-        avatar: 'U'
-      }]);
-      setNewComment('');
+  const loadTaskDetails = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await API.get(`/tasks/${task._id}`);
+      
+      if (response.data.success) {
+        setTaskDetails(response.data.data);
+        setEditForm({
+          title: response.data.data.title,
+          description: response.data.data.description || '',
+          status: response.data.data.status,
+          priority: response.data.data.priority,
+          dueDate: response.data.data.dueDate ? 
+            new Date(response.data.data.dueDate).toISOString().split('T')[0] : ''
+        });
+      }
+    } catch (error) {
+      console.error('Error cargando detalles de tarea:', error);
+      setError('Error al cargar los detalles de la tarea');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const toggleChecklistItem = (id) => {
-    setChecklistItems(items =>
-      items.map(item =>
-        item.id === id ? { ...item, completed: !item.completed } : item
-      )
-    );
+  const handleEditToggle = () => {
+    setIsEditing(!isEditing);
+    setError('');
   };
 
-  const completedItems = checklistItems.filter(item => item.completed).length;
-  const progressPercentage = Math.round((completedItems / checklistItems.length) * 100);
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSaveChanges = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const response = await API.put(`/tasks/${task._id}`, editForm);
+      
+      if (response.data.success) {
+        setTaskDetails(response.data.data);
+        setIsEditing(false);
+        onTaskUpdate && onTaskUpdate(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error actualizando tarea:', error);
+      setError('Error al actualizar la tarea');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (date) => {
+    if (!date) return 'No definida';
+    return new Date(date).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high': return 'text-danger';
+      case 'medium': return 'text-warning';
+      case 'low': return 'text-success';
+      default: return 'text-muted';
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'todo': return 'bg-secondary';
+      case 'in-progress': return 'bg-primary';
+      case 'review': return 'bg-warning';
+      case 'done': return 'bg-success';
+      default: return 'bg-secondary';
+    }
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <Modal show={show} onHide={onHide} size="lg" centered>
-      <Modal.Header closeButton>
-        <Modal.Title>Detalles de la Tarea</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        <Row>
-          {/* Columna Principal */}
-          <Col md={8}>
-            <h5>{task.title}</h5>
-            <p className="text-muted mb-4">{task.description}</p>
+    <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div className="modal-content">
+          {/* Header del Modal */}
+          <div className="modal-header">
+            <h5 className="modal-title">
+              <i className="bi bi-list-task me-2"></i>
+              Detalles de la Tarea
+            </h5>
+            <button 
+              type="button" 
+              className="btn-close" 
+              onClick={onClose}
+              disabled={loading}
+            ></button>
+          </div>
 
-            {/* Checklist */}
-            <h6 className="d-flex align-items-center mb-3">
-              <i className="bi bi-check2-square me-2"></i>
-              Checklist ({completedItems}/{checklistItems.length})
-            </h6>
-            <ProgressBar 
-              now={progressPercentage} 
-              className="mb-3" 
-              style={{ height: '8px' }}
-            />
-            
-            {checklistItems.map(item => (
-              <Form.Check
-                key={item.id}
-                type="checkbox"
-                id={`check-${item.id}`}
-                label={item.text}
-                checked={item.completed}
-                onChange={() => toggleChecklistItem(item.id)}
-                className="mb-2"
-              />
-            ))}
-
-            {/* Archivos Adjuntos */}
-            <h6 className="mt-4 mb-3">
-              <i className="bi bi-paperclip me-2"></i>
-              Archivos Adjuntos
-            </h6>
-            <div className="border rounded p-3 mb-4">
-              <div className="d-flex align-items-center mb-2">
-                <i className="bi bi-file-earmark-image fs-4 me-3 text-primary"></i>
-                <div className="flex-grow-1">
-                  <div className="fw-bold">brief_creativo_v2.jpg</div>
-                  <small className="text-muted">2.3 MB</small>
+          {/* Contenido del Modal */}
+          <div className="modal-body">
+            {loading ? (
+              <div className="text-center py-4">
+                <div className="spinner-border text-primary" role="status">
+                  <span className="visually-hidden">Cargando...</span>
                 </div>
-                <Button variant="outline-secondary" size="sm">
-                  <i className="bi bi-download"></i>
-                </Button>
+                <p className="mt-2">Cargando detalles...</p>
               </div>
-              <div className="d-flex align-items-center">
-                <i className="bi bi-file-earmark-zip fs-4 me-3 text-warning"></i>
-                <div className="flex-grow-1">
-                  <div className="fw-bold">assets_inspiracion.zip</div>
-                  <small className="text-muted">15.7 MB</small>
+            ) : error ? (
+              <div className="alert alert-danger">
+                <i className="bi bi-exclamation-triangle me-2"></i>
+                {error}
+              </div>
+            ) : taskDetails ? (
+              <div>
+                {/* Título */}
+                <div className="mb-4">
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-lg"
+                      name="title"
+                      value={editForm.title}
+                      onChange={handleInputChange}
+                      placeholder="Título de la tarea"
+                    />
+                  ) : (
+                    <h4 className="mb-0">{taskDetails.title}</h4>
+                  )}
                 </div>
-                <Button variant="outline-secondary" size="sm">
-                  <i className="bi bi-download"></i>
-                </Button>
-              </div>
-            </div>
 
-            {/* Comentarios */}
-            <h6>
-              <i className="bi bi-chat-left-text me-2"></i>
-              Comentarios
-            </h6>
-            {comments.map(comment => (
-              <div key={comment.id} className="d-flex mb-3">
-                <img
-                  src={`https://placehold.co/40x40/ffc107/white?text=${comment.avatar}`}
-                  className="rounded-circle me-3"
-                  alt={comment.author}
-                />
-                <div className="flex-grow-1">
-                  <div className="d-flex align-items-center mb-1">
-                    <strong className="me-2">{comment.author}</strong>
-                    <small className="text-muted">{comment.time}</small>
+                {/* Información básica */}
+                <div className="row mb-4">
+                  <div className="col-md-6">
+                    <div className="mb-3">
+                      <label className="form-label fw-bold">Estado:</label>
+                      {isEditing ? (
+                        <select
+                          className="form-select"
+                          name="status"
+                          value={editForm.status}
+                          onChange={handleInputChange}
+                        >
+                          <option value="todo">Por Hacer</option>
+                          <option value="in-progress">En Progreso</option>
+                          <option value="review">En Revisión</option>
+                          <option value="done">Completada</option>
+                        </select>
+                      ) : (
+                        <div>
+                          <span className={`badge ${getStatusColor(taskDetails.status)} ms-2`}>
+                            {taskDetails.status === 'todo' && 'Por Hacer'}
+                            {taskDetails.status === 'in-progress' && 'En Progreso'}
+                            {taskDetails.status === 'review' && 'En Revisión'}
+                            {taskDetails.status === 'done' && 'Completada'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="bg-light p-2 rounded">{comment.content}</div>
+                  <div className="col-md-6">
+                    <div className="mb-3">
+                      <label className="form-label fw-bold">Prioridad:</label>
+                      {isEditing ? (
+                        <select
+                          className="form-select"
+                          name="priority"
+                          value={editForm.priority}
+                          onChange={handleInputChange}
+                        >
+                          <option value="low">Baja</option>
+                          <option value="medium">Media</option>
+                          <option value="high">Alta</option>
+                        </select>
+                      ) : (
+                        <div>
+                          <span className={`ms-2 fw-bold ${getPriorityColor(taskDetails.priority)}`}>
+                            {taskDetails.priority === 'high' && 'Alta'}
+                            {taskDetails.priority === 'medium' && 'Media'}
+                            {taskDetails.priority === 'low' && 'Baja'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
-            
-            <Form onSubmit={handleAddComment} className="mt-3">
-              <div className="input-group">
-                <Form.Control
-                  type="text"
-                  placeholder="Añadir un comentario..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                />
-                <Button type="submit" variant="outline-secondary">
-                  Enviar
-                </Button>
-              </div>
-            </Form>
-          </Col>
 
-          {/* Columna Lateral */}
-          <Col md={4}>
-            <div className="bg-light p-3 rounded">
-              <h6 className="text-muted small text-uppercase">Proyecto</h6>
-              <p className="mb-3">Proyecto Alpha</p>
-
-              <h6 className="text-muted small text-uppercase">Estado</h6>
-              <Badge bg="primary" className="mb-3">En Progreso</Badge>
-
-              <h6 className="text-muted small text-uppercase">Prioridad</h6>
-              <Badge bg="danger" className="mb-3">{task.priority}</Badge>
-
-              <h6 className="text-muted small text-uppercase">Asignado a</h6>
-              {task.assignees?.map((assignee, index) => (
-                <div key={index} className="d-flex align-items-center mb-2">
-                  <img
-                    src={`https://placehold.co/32x32/${index === 0 ? '964ef9' : 'ffc107'}/white?text=${assignee.charAt(0)}`}
-                    className="rounded-circle me-2"
-                    alt={assignee}
-                  />
-                  <span className="small">{assignee}</span>
+                {/* Fechas */}
+                <div className="row mb-4">
+                  <div className="col-md-6">
+                    <div className="mb-3">
+                      <label className="form-label fw-bold">Fecha de vencimiento:</label>
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          className="form-control"
+                          name="dueDate"
+                          value={editForm.dueDate}
+                          onChange={handleInputChange}
+                        />
+                      ) : (
+                        <p className="mb-0">{formatDate(taskDetails.dueDate)}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="col-md-6">
+                    <div className="mb-3">
+                      <label className="form-label fw-bold">Fecha de creación:</label>
+                      <p className="mb-0">{formatDate(taskDetails.createdAt)}</p>
+                    </div>
+                  </div>
                 </div>
-              ))}
 
-              <h6 className="text-muted small text-uppercase mt-3">Fecha de Entrega</h6>
-              <p>
-                <i className="bi bi-calendar-event me-2"></i>
-                {task.dueDate}
-              </p>
+                {/* Descripción */}
+                <div className="mb-4">
+                  <label className="form-label fw-bold">Descripción:</label>
+                  {isEditing ? (
+                    <textarea
+                      className="form-control"
+                      name="description"
+                      rows="4"
+                      value={editForm.description}
+                      onChange={handleInputChange}
+                      placeholder="Descripción de la tarea..."
+                    ></textarea>
+                  ) : (
+                    <div className="border rounded p-3 bg-light">
+                      {taskDetails.description || (
+                        <em className="text-muted">Sin descripción</em>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-              <h6 className="text-muted small text-uppercase">Progreso</h6>
-              <div className="d-flex align-items-center">
-                <ProgressBar 
-                  now={task.progress} 
-                  className="flex-grow-1 me-2" 
-                  style={{ height: '8px' }}
-                />
-                <small className="fw-bold">{task.progress}%</small>
+                {/* Asignación */}
+                {taskDetails.assignedTo && (
+                  <div className="mb-4">
+                    <label className="form-label fw-bold">Asignada a:</label>
+                    <div className="d-flex align-items-center">
+                      <div className="avatar-circle me-2">
+                        {taskDetails.assignedTo.avatar ? (
+                          <img src={taskDetails.assignedTo.avatar} alt="Avatar" />
+                        ) : (
+                          <span>{taskDetails.assignedTo.name?.charAt(0) || '?'}</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="fw-medium">{taskDetails.assignedTo.name}</div>
+                        <small className="text-muted">{taskDetails.assignedTo.email}</small>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Creada por */}
+                {taskDetails.createdBy && (
+                  <div className="mb-4">
+                    <label className="form-label fw-bold">Creada por:</label>
+                    <div className="d-flex align-items-center">
+                      <div className="avatar-circle me-2">
+                        {taskDetails.createdBy.avatar ? (
+                          <img src={taskDetails.createdBy.avatar} alt="Avatar" />
+                        ) : (
+                          <span>{taskDetails.createdBy.name?.charAt(0) || '?'}</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="fw-medium">{taskDetails.createdBy.name}</div>
+                        <small className="text-muted">{taskDetails.createdBy.email}</small>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          </Col>
-        </Row>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="secondary" onClick={onHide}>
-          Cerrar
-        </Button>
-        <Button variant="primary">
-          Guardar Cambios
-        </Button>
-      </Modal.Footer>
-    </Modal>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-muted">No se pudieron cargar los detalles de la tarea</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer del Modal */}
+          <div className="modal-footer">
+            {taskDetails && (
+              <>
+                {isEditing ? (
+                  <>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      onClick={handleEditToggle}
+                      disabled={loading}
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn btn-primary" 
+                      onClick={handleSaveChanges}
+                      disabled={loading}
+                    >
+                      {loading ? 'Guardando...' : 'Guardar Cambios'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      onClick={onClose}
+                    >
+                      Cerrar
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn btn-primary" 
+                      onClick={handleEditToggle}
+                    >
+                      <i className="bi bi-pencil me-1"></i>
+                      Editar
+                    </button>
+                    {/* 🔥 AGREGAR ESTE BOTÓN DE ELIMINAR */}
+                    {/* <button 
+                      type="button" 
+                      className="btn btn-danger" 
+                      onClick={() => {
+                        // Cerrar este modal y abrir el modal de confirmación
+                        onClose();
+                        // Triggear función de eliminar en el componente padre
+                        if (window.triggerDeleteTask) {
+                          window.triggerDeleteTask(taskDetails);
+                        }
+                      }}
+                    >
+                      <i className="bi bi-trash me-1"></i>
+                      Eliminar
+                    </button> */}
+                    <button 
+                      type="button" 
+                      className="btn btn-danger" 
+                      onClick={() => {
+                        console.log('🗑️ === BOTÓN ELIMINAR CLICKEADO ===');
+                        console.log('🗑️ taskDetails:', taskDetails);
+                        console.log('🗑️ onDeleteTask función existe?', typeof onDeleteTask);
+                        console.log('🗑️ onClose función existe?', typeof onClose);
+                        
+                        // Cerrar este modal y triggear eliminación
+                        console.log('🗑️ Cerrando modal de detalles...');
+                        onClose();
+                        
+                        if (onDeleteTask) {
+                          console.log('🗑️ Ejecutando onDeleteTask...');
+                          onDeleteTask(taskDetails);
+                        } else {
+                          console.error('❌ onDeleteTask no está definido!');
+                        }
+                        
+                        console.log('🗑️ === FIN BOTÓN ELIMINAR ===');
+                      }}
+                    >
+                      <i className="bi bi-trash me-1"></i>
+                      Eliminar
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
-}
+};
 
 export default TaskDetailModal;

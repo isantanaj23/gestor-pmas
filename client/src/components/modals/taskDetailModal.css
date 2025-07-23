@@ -1,0 +1,158 @@
+/* client/src/components/modals/TaskDetailModal.css */
+
+/* Estilos para el avatar circular */
+.avatar-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
+  border: 2px solid #e9ecef;
+  overflow: hidden;
+}
+
+.avatar-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* Animaciones para el modal */
+.modal.fade.show {
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Estilos para los badges de estado */
+.badge {
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* Estilos para el contenido del modal */
+.modal-body {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* Mejorar la apariencia de los formularios en modo edición */
+.form-control:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+/* Estilos para la descripción en modo lectura */
+.border.rounded.p-3.bg-light {
+  background-color: #f8f9fa !important;
+  border: 1px solid #e9ecef !important;
+  min-height: 100px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+/* Estilos para botones de prioridad */
+.text-danger { color: #dc3545 !important; }
+.text-warning { color: #ffc107 !important; }
+.text-success { color: #198754 !important; }
+.text-muted { color: #6c757d !important; }
+
+/* Estilos para badges de estado */
+.bg-secondary { background-color: #6c757d !important; }
+.bg-primary { background-color: #0d6efd !important; }
+.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
+.bg-success { background-color: #198754 !important; }
+
+/* Loader personalizado */
+.spinner-border-custom {
+  width: 3rem;
+  height: 3rem;
+  border-width: 0.3em;
+}
+
+/* Mejorar la separación entre elementos */
+.modal-header {
+  border-bottom: 1px solid #e9ecef;
+  padding: 1rem 1.5rem;
+}
+
+.modal-footer {
+  border-top: 1px solid #e9ecef;
+  padding: 1rem 1.5rem;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+/* Responsive para pantallas pequeñas */
+@media (max-width: 768px) {
+  .modal-dialog.modal-lg {
+    max-width: 95%;
+    margin: 0.5rem auto;
+  }
+  
+  .modal-body {
+    padding: 1rem;
+  }
+  
+  .avatar-circle {
+    width: 35px;
+    height: 35px;
+    font-size: 14px;
+  }
+}
+
+/* Estilos para información de fechas */
+.form-label.fw-bold {
+  font-weight: 600 !important;
+  color: #495057;
+  margin-bottom: 0.5rem;
+}
+
+/* Hover effects para botones */
+.btn-primary:hover {
+  background-color: #5a67d8;
+  border-color: #5a67d8;
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+/* Estilo para el overlay del modal */
+.modal {
+  backdrop-filter: blur(2px);
+}
+
+/* Mejorar la legibilidad */
+.modal-title {
+  font-weight: 600;
+  color: #2d3748;
+}

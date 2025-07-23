@@ -1,14 +1,26 @@
-// client/src/components/project-tabs/KanbanBoard.js
+// 🔥 REEMPLAZA tus importaciones actuales con estas:
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import useSocket from '../../hooks/useSocket';
-import taskService from '../../services/taskService';
+import taskService, { deleteTask } from '../../services/taskService'; // 🔥 AGREGAR deleteTask
 import projectService from '../../services/projectService';
+import TaskDetailModal from '../modals/TaskDetailModal';
+import DeleteConfirmModal from '../modals/DeleteConfirmModal'; // 🔥 NUEVA IMPORTACIÓN
+
 import './KanbanBoard.css';
+
+
 
 const KanbanBoard = ({ projectId, project, tasks, onTasksUpdate }) => {
   const { user } = useAuth();
   const { joinProject, leaveProject, updateTask, newComment, on, off } = useSocket();
+
+  const [showDetailModal, setShowDetailModal] = useState(false);
+const [selectedTaskForDetail, setSelectedTaskForDetail] = useState(null);
+
+const [showDeleteModal, setShowDeleteModal] = useState(false);
+const [taskToDelete, setTaskToDelete] = useState(null);
+const [isDeleting, setIsDeleting] = useState(false);
   
   // Estados locales
   const [isLoading, setIsLoading] = useState(true);
@@ -137,6 +149,8 @@ const KanbanBoard = ({ projectId, project, tasks, onTasksUpdate }) => {
       on('task_moved', handleTaskMoved);
       on('task_created', handleTaskCreated);
       on('new_comment', handleNewComment);
+      on('task_updated', handleTaskUpdated);
+      on('task_moved', handleTaskMoved);
 
       // Cleanup al desmontar
       return () => {
@@ -344,6 +358,96 @@ const KanbanBoard = ({ projectId, project, tasks, onTasksUpdate }) => {
     }
   };
 
+  // 🔥 AGREGAR ESTA FUNCIÓN (después de handleUpdateTask)
+ const handleViewTaskDetail = (task) => {
+    console.log('👁️ Viendo detalles de la tarea:', task);
+    console.log('🔍 Estado antes - showDetailModal:', showDetailModal);
+    console.log('🔍 Task seleccionada antes:', selectedTaskForDetail);
+    
+    setSelectedTaskForDetail(task);
+    setShowDetailModal(true);
+    
+    console.log('✅ Estado después - showDetailModal debería ser true');
+    console.log('✅ Task seleccionada después:', task._id);
+  };
+
+   // 🔥 AGREGA estas funciones después de handleUpdateTask:
+      // Función para iniciar el proceso de eliminación
+ const handleDeleteTask = (task) => {
+    console.log('🗑️ ===== INICIANDO ELIMINACIÓN =====');
+    console.log('🗑️ Tarea recibida:', task);
+    console.log('🗑️ Task ID:', task?._id);
+    console.log('🗑️ Task title:', task?.title);
+    console.log('🗑️ Estado antes - showDeleteModal:', showDeleteModal);
+    console.log('🗑️ taskToDelete antes:', taskToDelete);
+    
+    setTaskToDelete(task);
+    setShowDeleteModal(true);
+    
+    console.log('🗑️ Estados actualizados - debería abrir modal de confirmación');
+    console.log('🗑️ ===== FIN INICIANDO ELIMINACIÓN =====');
+  };
+
+  // Función para confirmar la eliminación
+  const handleConfirmDelete = async () => {
+    console.log('🗑️ ===== CONFIRMANDO ELIMINACIÓN =====');
+    console.log('🗑️ taskToDelete:', taskToDelete);
+    
+    if (!taskToDelete) {
+      console.log('❌ No hay tarea para eliminar');
+      return;
+    }
+
+    console.log('🗑️ Iniciando proceso de eliminación...');
+    setIsDeleting(true);
+    
+    try {
+      console.log('🗑️ Llamando deleteTask con ID:', taskToDelete._id);
+      
+      const response = await deleteTask(taskToDelete._id);
+      
+      console.log('🗑️ Respuesta del servidor:', response);
+      
+      if (response.success) {
+        console.log('✅ Eliminación exitosa en servidor');
+        
+        // Remover de la lista local
+        console.log('🗑️ Removiendo de lista local...');
+        setLocalTasks(prev => {
+          const newTasks = prev.filter(task => task._id !== taskToDelete._id);
+          console.log('🗑️ Tareas antes:', prev.length, 'después:', newTasks.length);
+          return newTasks;
+        });
+        
+        // Actualizar tasks en el componente padre si existe la función
+        if (onTasksUpdate) {
+          console.log('🗑️ Actualizando componente padre...');
+          const updatedTasks = localTasks.filter(task => task._id !== taskToDelete._id);
+          onTasksUpdate(updatedTasks);
+        }
+        
+        // Limpiar estados
+        console.log('🗑️ Limpiando estados...');
+        setTaskToDelete(null);
+        setShowDeleteModal(false);
+        
+        console.log('✅ Tarea eliminada completamente de la interfaz');
+        
+      } else {
+        console.error('❌ Error del servidor:', response.message);
+        throw new Error(response.message || 'Error al eliminar la tarea');
+      }
+    } catch (error) {
+      console.error('❌ Error eliminando tarea:', error);
+      alert('Error al eliminar la tarea: ' + error.message);
+    } finally {
+      console.log('🗑️ Finalizando proceso...');
+      setIsDeleting(false);
+      console.log('🗑️ ===== FIN CONFIRMANDO ELIMINACIÓN =====');
+    }
+  };
+    console.log('🎭 RENDER KanbanBoard - showDetailModal:', showDetailModal, 'selectedTask:', selectedTaskForDetail?._id);
+
   // 🎯 Renders condicionales
   if (isLoading) {
     return (
@@ -382,6 +486,10 @@ const KanbanBoard = ({ projectId, project, tasks, onTasksUpdate }) => {
             {project?.name || 'Proyecto'} • {localTasks.length} tareas totales
           </small>
         </div>
+
+
+
+
         <button 
           className="btn btn-primary btn-sm"
           onClick={() => setShowTaskModal(true)}
@@ -424,86 +532,108 @@ const KanbanBoard = ({ projectId, project, tasks, onTasksUpdate }) => {
                   </div>
                 ) : (
                   getTasksByStatus(column.id).map(task => (
-                    <div
-                      key={task._id}
-                      className="task-card card mb-2 shadow-sm border-0"
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, task)}
-                      onDragEnd={handleDragEnd}
-                      style={{ cursor: 'grab' }}
-                    >
-                      <div className="card-body p-3">
-                        {/* Header de la tarjeta */}
-                        <div className="d-flex justify-content-between align-items-start mb-2">
-                          <h6 className="card-title mb-0 text-truncate" style={{ maxWidth: '80%' }}>
-                            {task.title}
-                          </h6>
-                          <div className="dropdown">
-                            <button 
-                              className="btn btn-sm btn-outline-secondary btn-circle"
-                              data-bs-toggle="dropdown"
-                            >
-                              <i className="bi bi-three-dots-vertical"></i>
-                            </button>
-                            <ul className="dropdown-menu dropdown-menu-end">
-                              <li>
-                                <button 
-                                  className="dropdown-item"
-                                  onClick={() => handleEditTask(task)}
-                                >
-                                  <i className="bi bi-pencil me-2"></i>Editar
-                                </button>
-                              </li>
-                              <li><hr className="dropdown-divider" /></li>
-                              <li>
-                                <button className="dropdown-item text-danger">
-                                  <i className="bi bi-trash me-2"></i>Eliminar
-                                </button>
-                              </li>
-                            </ul>
-                          </div>
-                        </div>
+  <div
+    key={task._id}
+    className="task-card card mb-2 shadow-sm border-0"
+    draggable
+    onDragStart={(e) => handleDragStart(e, task)}
+    onDragEnd={handleDragEnd}
+    onClick={() => handleViewTaskDetail(task)} // 🔥 AGREGAR evento click
+    style={{ cursor: 'pointer' }} // 🔥 CAMBIAR cursor
+  >
+    <div className="card-body p-3">
+      {/* Header de la tarjeta */}
+      <div className="d-flex justify-content-between align-items-start mb-2">
+        <h6 className="card-title mb-0 text-truncate" style={{ maxWidth: '80%' }}>
+          {task.title}
+        </h6>
+        <div className="dropdown">
+          <button 
+            className="btn btn-sm btn-outline-secondary btn-circle"
+            data-bs-toggle="dropdown"
+            onClick={(e) => e.stopPropagation()} // 🔥 EVITAR que abra el modal
+          >
+            <i className="bi bi-three-dots-vertical"></i>
+          </button>
+          <ul className="dropdown-menu dropdown-menu-end">
+            <li>
+              <button 
+                className="dropdown-item"
+                onClick={(e) => {
+                  e.stopPropagation(); // 🔥 EVITAR que abra el modal
+                  handleEditTask(task);
+                }}
+              >
+                <i className="bi bi-pencil me-2"></i>Editar
+              </button>
+            </li>
+            <li>
+              <button 
+                className="dropdown-item"
+                onClick={(e) => {
+                  e.stopPropagation(); // 🔥 EVITAR que abra el modal
+                  handleViewTaskDetail(task);
+                }}
+              >
+                <i className="bi bi-eye me-2"></i>Ver Detalles
+              </button>
+            </li>
+            <li><hr className="dropdown-divider" /></li>
+            <li>
+              <button 
+                className="dropdown-item text-danger"
+                onClick={(e) => {
+                  e.stopPropagation(); // 🔥 EVITAR que abra el modal
+                  handleDeleteTask(task); // 🔥 AGREGAR funcionalidad
+                }}
+              >
+                <i className="bi bi-trash me-2"></i>Eliminar
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
 
-                        {/* Descripción */}
-                        {task.description && (
-                          <p className="card-text small text-muted mb-2">
-                            {task.description.length > 80 
-                              ? task.description.substring(0, 80) + '...'
-                              : task.description
-                            }
-                          </p>
-                        )}
+      {/* Descripción */}
+      {task.description && (
+        <p className="card-text small text-muted mb-2">
+          {task.description.length > 80 
+            ? task.description.substring(0, 80) + '...'
+            : task.description
+          }
+        </p>
+      )}
 
-                        {/* Prioridad */}
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <span className={`badge bg-${getPriorityColor(task.priority)} bg-opacity-20 text-${getPriorityColor(task.priority)}`}>
-                            {task.priority === 'urgent' ? 'Urgente' :
-                             task.priority === 'high' ? 'Alta' :
-                             task.priority === 'medium' ? 'Media' : 'Baja'}
-                          </span>
-                          {task.dueDate && (
-                            <small className="text-muted">
-                              <i className="bi bi-calendar me-1"></i>
-                              {new Date(task.dueDate).toLocaleDateString('es-ES')}
-                            </small>
-                          )}
-                        </div>
+      {/* Prioridad */}
+      <div className="d-flex justify-content-between align-items-center mb-2">
+        <span className={`badge bg-${getPriorityColor(task.priority)} bg-opacity-20 text-${getPriorityColor(task.priority)}`}>
+          {task.priority === 'urgent' ? 'Urgente' :
+           task.priority === 'high' ? 'Alta' :
+           task.priority === 'medium' ? 'Media' : 'Baja'}
+        </span>
+        {task.dueDate && (
+          <small className="text-muted">
+            <i className="bi bi-calendar me-1"></i>
+            {new Date(task.dueDate).toLocaleDateString('es-ES')}
+          </small>
+        )}
+      </div>
 
-                        {/* Asignado */}
-                        {task.assignedTo && (
-                          <div className="d-flex align-items-center">
-                            <img
-                              src={task.assignedTo.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(task.assignedTo.name)}&background=6f42c1&color=fff&size=24`}
-                              alt={task.assignedTo.name}
-                              className="rounded-circle me-2"
-                              style={{ width: '24px', height: '24px' }}
-                            />
-                            <small className="text-muted">{task.assignedTo.name}</small>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
+      {/* Asignado */}
+      {task.assignedTo && (
+        <div className="d-flex align-items-center">
+          <img
+            src={task.assignedTo.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(task.assignedTo.name)}&background=6f42c1&color=fff&size=24`}
+            alt={task.assignedTo.name}
+            className="rounded-circle me-2"
+            style={{ width: '24px', height: '24px' }}
+          />
+          <small className="text-muted">{task.assignedTo.name}</small>
+        </div>
+      )}
+    </div>
+  </div>
+))
                 )}
               </div>
             </div>
@@ -708,6 +838,58 @@ const KanbanBoard = ({ projectId, project, tasks, onTasksUpdate }) => {
           </div>
         </div>
       )}
+
+          {/* Modal Detalles de Tarea */}
+    <TaskDetailModal
+        task={selectedTaskForDetail}
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        onTaskUpdate={(updatedTask) => {
+          // Actualizar la tarea en la lista local
+          setLocalTasks(prev => 
+            prev.map(task => 
+              task._id === updatedTask._id ? updatedTask : task
+            )
+          );
+          
+          // Actualizar tasks en el componente padre si existe la función
+          if (onTasksUpdate) {
+            const updatedTasks = localTasks.map(task => 
+              task._id === updatedTask._id ? updatedTask : task
+            );
+            onTasksUpdate(updatedTasks);
+          }
+        }}
+        projectId={projectId}
+         onDeleteTask={(task) => {
+          // Función para eliminar desde el modal de detalles
+          handleDeleteTask(task);
+        }}
+      />
+
+      {/* 🔥 AGREGAR LOGS antes del Modal Confirmar Eliminación */}
+      {console.log('🎭 RENDER - showDeleteModal:', showDeleteModal, 'taskToDelete:', taskToDelete?._id)}
+
+
+     {/* Modal Confirmar Eliminación */}
+      {showDeleteModal && console.log('🎭 SÍ va a renderizar DeleteConfirmModal')}
+      <DeleteConfirmModal
+        show={showDeleteModal}
+        onHide={() => {
+          console.log('🗑️ Cerrando modal de confirmación');
+          setShowDeleteModal(false);
+        }}
+        onConfirm={() => {
+          console.log('🗑️ Confirmando eliminación desde modal');
+          handleConfirmDelete();
+        }}
+        loading={isDeleting}
+        title="Eliminar Tarea"
+        message="¿Estás seguro de que deseas eliminar esta tarea?"
+        itemName={taskToDelete?.title}
+        confirmText="Eliminar Tarea"
+      />
+
     </div>
   );
 };

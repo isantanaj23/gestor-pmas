@@ -281,4 +281,32 @@ const taskService = {
   },
 };
 
+// 🔥 AGREGAR ESTA FUNCIÓN al final de client/src/services/taskService.js
+
+// Eliminar una tarea
+export const deleteTask = async (taskId) => {
+  try {
+    console.log('🗑️ Eliminando tarea con ID:', taskId);
+    
+    const response = await API.delete(`/tasks/${taskId}`);
+    
+    console.log('✅ Respuesta de eliminación:', response.data);
+    
+    return {
+      success: true,
+      message: response.data.message || 'Tarea eliminada exitosamente',
+      data: response.data.data
+    };
+  } catch (error) {
+    console.error('❌ Error en deleteTask:', error);
+    
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Error al eliminar la tarea'
+    };
+  }
+};
+
+
+
 export default taskService;

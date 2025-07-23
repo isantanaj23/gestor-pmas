@@ -452,7 +452,6 @@ router.get('/debug/list', async (req, res) => {
 
 
 // 🔥 AGREGAR esta ruta temporal al final de server/routes/projects.js (antes de module.exports)
-
 // 🔥 RUTA TEMPORAL PARA CREAR USUARIOS DE PRUEBA
 router.post('/debug/create-test-users', async (req, res) => {
   try {
