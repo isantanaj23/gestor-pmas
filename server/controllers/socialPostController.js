@@ -1,6 +1,7 @@
 // server/controllers/socialPostController.js
 const SocialPost = require('../models/SocialPost');
 const Project = require('../models/Project');
+const mongoose = require('mongoose');
 
 // @desc    Crear nueva publicación social
 // @route   POST /api/social-posts
@@ -8,6 +9,8 @@ const Project = require('../models/Project');
 exports.createSocialPost = async (req, res) => {
   try {
     const { projectId, platform, content, scheduledDate, hashtags, media, notes } = req.body;
+
+    console.log('📝 Creando nueva publicación social:', { projectId, platform, content: content?.substring(0, 50) });
 
     // Verificar que el usuario tiene acceso al proyecto
     const project = await Project.findById(projectId);
@@ -45,6 +48,8 @@ exports.createSocialPost = async (req, res) => {
 
     await socialPost.populate('author', 'name email avatar');
 
+    console.log('✅ Publicación social creada:', socialPost._id);
+
     // Emitir notificación via socket si está programada
     if (socialPost.status === 'scheduled') {
       const socketHandler = req.app.get('socketHandler');
@@ -59,10 +64,11 @@ exports.createSocialPost = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al crear publicación social:', error);
+    console.error('❌ Error al crear publicación social:', error);
     res.status(500).json({
       success: false,
-      message: 'Error del servidor al crear la publicación'
+      message: 'Error del servidor al crear la publicación',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }
 };
@@ -74,6 +80,8 @@ exports.getProjectSocialPosts = async (req, res) => {
   try {
     const { projectId } = req.params;
     const { startDate, endDate, platform, status } = req.query;
+
+    console.log('📋 Obteniendo publicaciones del proyecto:', projectId);
 
     // Verificar acceso al proyecto
     const project = await Project.findById(projectId);
@@ -111,6 +119,8 @@ exports.getProjectSocialPosts = async (req, res) => {
       .populate('author', 'name email avatar')
       .sort({ scheduledDate: 1 });
 
+    console.log(`✅ ${posts.length} publicaciones encontradas para proyecto ${projectId}`);
+
     res.status(200).json({
       success: true,
       count: posts.length,
@@ -118,10 +128,11 @@ exports.getProjectSocialPosts = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al obtener publicaciones:', error);
+    console.error('❌ Error al obtener publicaciones:', error);
     res.status(500).json({
       success: false,
-      message: 'Error del servidor al obtener publicaciones'
+      message: 'Error del servidor al obtener publicaciones',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }
 };
@@ -161,10 +172,11 @@ exports.getSocialPost = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al obtener publicación:', error);
+    console.error('❌ Error al obtener publicación:', error);
     res.status(500).json({
       success: false,
-      message: 'Error del servidor'
+      message: 'Error del servidor al obtener la publicación',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }
 };
@@ -174,6 +186,8 @@ exports.getSocialPost = async (req, res) => {
 // @access  Private
 exports.updateSocialPost = async (req, res) => {
   try {
+    console.log('✏️ Actualizando publicación:', req.params.id, req.body);
+
     let post = await SocialPost.findById(req.params.id);
 
     if (!post) {
@@ -192,14 +206,6 @@ exports.updateSocialPost = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: 'No tienes permisos para editar esta publicación'
-      });
-    }
-
-    // No permitir editar publicaciones ya publicadas
-    if (post.status === 'published') {
-      return res.status(400).json({
-        success: false,
-        message: 'No se pueden editar publicaciones ya publicadas'
       });
     }
 
@@ -225,16 +231,19 @@ exports.updateSocialPost = async (req, res) => {
       { new: true, runValidators: true }
     ).populate('author', 'name email avatar');
 
+    console.log('✅ Publicación actualizada:', post._id);
+
     res.status(200).json({
       success: true,
       data: post
     });
 
   } catch (error) {
-    console.error('Error al actualizar publicación:', error);
+    console.error('❌ Error al actualizar publicación:', error);
     res.status(500).json({
       success: false,
-      message: 'Error del servidor al actualizar la publicación'
+      message: 'Error del servidor al actualizar la publicación',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }
 };
@@ -244,6 +253,8 @@ exports.updateSocialPost = async (req, res) => {
 // @access  Private
 exports.deleteSocialPost = async (req, res) => {
   try {
+    console.log('🗑️ Eliminando publicación:', req.params.id);
+
     const post = await SocialPost.findById(req.params.id);
 
     if (!post) {
@@ -265,15 +276,9 @@ exports.deleteSocialPost = async (req, res) => {
       });
     }
 
-    // No permitir eliminar publicaciones ya publicadas
-    if (post.status === 'published') {
-      return res.status(400).json({
-        success: false,
-        message: 'No se pueden eliminar publicaciones ya publicadas'
-      });
-    }
+    await SocialPost.findByIdAndDelete(req.params.id);
 
-    await post.deleteOne();
+    console.log('✅ Publicación eliminada:', req.params.id);
 
     res.status(200).json({
       success: true,
@@ -281,10 +286,11 @@ exports.deleteSocialPost = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al eliminar publicación:', error);
+    console.error('❌ Error al eliminar publicación:', error);
     res.status(500).json({
       success: false,
-      message: 'Error del servidor al eliminar la publicación'
+      message: 'Error del servidor al eliminar la publicación',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }
 };
@@ -295,6 +301,8 @@ exports.deleteSocialPost = async (req, res) => {
 exports.updatePostStatus = async (req, res) => {
   try {
     const { status } = req.body;
+    console.log('🔄 Cambiando estado de publicación:', req.params.id, 'a', status);
+
     const post = await SocialPost.findById(req.params.id);
 
     if (!post) {
@@ -316,6 +324,15 @@ exports.updatePostStatus = async (req, res) => {
       });
     }
 
+    // Validar estados permitidos
+    const allowedStatuses = ['draft', 'scheduled', 'published', 'failed', 'cancelled'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Estado no válido'
+      });
+    }
+
     post.status = status;
     
     if (status === 'published') {
@@ -330,16 +347,19 @@ exports.updatePostStatus = async (req, res) => {
 
     await post.save();
 
+    console.log('✅ Estado cambiado:', req.params.id, 'a', status);
+
     res.status(200).json({
       success: true,
       data: post
     });
 
   } catch (error) {
-    console.error('Error al cambiar estado:', error);
+    console.error('❌ Error al cambiar estado:', error);
     res.status(500).json({
       success: false,
-      message: 'Error del servidor'
+      message: 'Error del servidor',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }
 };
@@ -350,6 +370,8 @@ exports.updatePostStatus = async (req, res) => {
 exports.getSocialPostStats = async (req, res) => {
   try {
     const { projectId } = req.params;
+
+    console.log('📊 Obteniendo estadísticas del proyecto:', projectId);
 
     // Verificar acceso al proyecto
     const project = await Project.findById(projectId);
@@ -371,8 +393,9 @@ exports.getSocialPostStats = async (req, res) => {
       });
     }
 
+    // Estadísticas por estado
     const stats = await SocialPost.aggregate([
-      { $match: { project: mongoose.Types.ObjectId(projectId) } },
+      { $match: { project: new mongoose.Types.ObjectId(projectId) } },
       {
         $group: {
           _id: '$status',
@@ -384,8 +407,9 @@ exports.getSocialPostStats = async (req, res) => {
       }
     ]);
 
+    // Estadísticas por plataforma
     const platformStats = await SocialPost.aggregate([
-      { $match: { project: mongoose.Types.ObjectId(projectId) } },
+      { $match: { project: new mongoose.Types.ObjectId(projectId) } },
       {
         $group: {
           _id: '$platform',
@@ -397,29 +421,39 @@ exports.getSocialPostStats = async (req, res) => {
       }
     ]);
 
+    // Estadísticas generales
+    const totalPosts = await SocialPost.countDocuments({ project: projectId });
+    const publishedPosts = await SocialPost.countDocuments({ 
+      project: projectId, 
+      status: 'published' 
+    });
+    const scheduledPosts = await SocialPost.countDocuments({ 
+      project: projectId, 
+      status: 'scheduled' 
+    });
+
+    console.log('✅ Estadísticas obtenidas para proyecto:', projectId);
+
     res.status(200).json({
       success: true,
       data: {
         byStatus: stats,
-        byPlatform: platformStats
+        byPlatform: platformStats,
+        summary: {
+          total: totalPosts,
+          published: publishedPosts,
+          scheduled: scheduledPosts,
+          draft: totalPosts - publishedPosts - scheduledPosts
+        }
       }
     });
 
   } catch (error) {
-    console.error('Error al obtener estadísticas:', error);
+    console.error('❌ Error al obtener estadísticas:', error);
     res.status(500).json({
       success: false,
-      message: 'Error del servidor'
+      message: 'Error del servidor',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }
-};
-
-module.exports = {
-  createSocialPost,
-  getProjectSocialPosts,
-  getSocialPost,
-  updateSocialPost,
-  deleteSocialPost,
-  updatePostStatus,
-  getSocialPostStats
 };

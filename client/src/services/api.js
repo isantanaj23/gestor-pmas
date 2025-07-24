@@ -1,8 +1,8 @@
-// client/src/services/api.js
+// client/src/services/api.js - VERSIÓN DEBUG
 import axios from 'axios';
 
 // Configuración base del API
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 console.log('🌐 API Base URL:', API_BASE_URL); // Para debug
 
@@ -28,7 +28,8 @@ API.interceptors.request.use(
       url: config.url,
       baseURL: config.baseURL,
       fullURL: `${config.baseURL}${config.url}`,
-      hasToken: !!token
+      hasToken: !!token,
+      tokenPreview: token ? token.substring(0, 20) + '...' : null
     });
     
     return config;
@@ -39,10 +40,10 @@ API.interceptors.request.use(
   }
 );
 
-// Interceptor para manejar respuestas
+// Interceptor para manejar respuestas - VERSIÓN DEBUG
 API.interceptors.response.use(
   (response) => {
-    console.log('📥 Response:', {
+    console.log('📥 Response SUCCESS:', {
       status: response.status,
       url: response.config.url,
       data: response.data
@@ -50,18 +51,20 @@ API.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.error('❌ Response Error:', {
+    console.error('❌ Response ERROR:', {
       status: error.response?.status,
       message: error.response?.data?.message,
-      url: error.config?.url
+      url: error.config?.url,
+      fullError: error.response?.data
     });
     
-    // Si el token expiró, redirigir al login
-    if (error.response?.status === 401) {
-      localStorage.removeItem('planifica_token');
-      localStorage.removeItem('planifica_user');
-      window.location.href = '/login';
-    }
+    // 🔥 COMENTADO TEMPORALMENTE - NO HACER LOGOUT AUTOMÁTICO
+    // if (error.response?.status === 401) {
+    //   localStorage.removeItem('planifica_token');
+    //   localStorage.removeItem('planifica_user');
+    //   window.location.href = '/login';
+    // }
+    
     return Promise.reject(error);
   }
 );
@@ -122,58 +125,109 @@ export const socialPostAPI = {
   },
   
   // Obtener una publicación específica
-  getById: (id) => API.get(`/social-posts/${id}`),
+  getById: (postId) => API.get(`/social-posts/${postId}`),
   
   // Actualizar publicación
-  update: (id, data) => API.put(`/social-posts/${id}`, data),
+  update: (postId, data) => API.put(`/social-posts/${postId}`, data),
   
   // Eliminar publicación
-  delete: (id) => API.delete(`/social-posts/${id}`),
+  delete: (postId) => API.delete(`/social-posts/${postId}`),
   
   // Cambiar estado de publicación
-  updateStatus: (id, status) => API.patch(`/social-posts/${id}/status`, { status }),
+  updateStatus: (postId, status) => API.patch(`/social-posts/${postId}/status`, { status }),
   
-  // Obtener estadísticas de un proyecto
+  // Obtener estadísticas de publicaciones
   getStats: (projectId) => API.get(`/social-posts/stats/${projectId}`),
   
   // Duplicar publicación
-  duplicate: (id, newScheduledDate) => API.post(`/social-posts/${id}/duplicate`, { 
-    scheduledDate: newScheduledDate 
-  }),
+  duplicate: async (postId, newScheduledDate) => {
+    try {
+      // Primero obtenemos la publicación original
+      const originalResponse = await API.get(`/social-posts/${postId}`);
+      const originalPost = originalResponse.data.data;
+      
+      // Creamos una nueva publicación con los datos duplicados
+      const duplicatedData = {
+        projectId: originalPost.project._id,
+        platform: originalPost.platform,
+        content: `[COPIA] ${originalPost.content}`,
+        scheduledDate: newScheduledDate || new Date(Date.now() + 3600000).toISOString(),
+        hashtags: originalPost.hashtags || [],
+        notes: `Duplicado de: ${originalPost.notes || 'Sin notas'}`,
+        status: 'draft'
+      };
+      
+      return await API.post('/social-posts', duplicatedData);
+    } catch (error) {
+      console.error('Error duplicando publicación:', error);
+      throw error;
+    }
+  }
 };
 
-// Función helper para manejar errores de API de forma consistente
-export const handleApiError = (error, defaultMessage = 'Ha ocurrido un error') => {
-  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-    return 'Tiempo de espera agotado. Verifica tu conexión a internet.';
-  }
+// Funciones utilitarias
+export const apiUtils = {
+  // Verificar conexión con el servidor
+  checkConnection: async () => {
+    try {
+      const response = await API.get('/health');
+      console.log('✅ Conexión con servidor OK:', response.data);
+      return true;
+    } catch (error) {
+      console.error('❌ Sin conexión con servidor:', error);
+      return false;
+    }
+  },
   
-  if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
-    return 'Sin conexión al servidor. Verifica tu conexión a internet.';
+  // Verificar estado de autenticación
+  checkAuth: async () => {
+    try {
+      const response = await API.get('/auth/me');
+      console.log('✅ Token válido:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Token inválido:', error);
+      return null;
+    }
   }
+};
+
+// 🆕 FUNCIÓN HANDLE API ERROR (que faltaba)
+export const handleApiError = (error, defaultMessage = 'Error desconocido') => {
+  console.log('🔍 handleApiError llamado con:', error);
   
   if (error.response) {
-    const { status, data } = error.response;
+    // Error del servidor con respuesta
+    const status = error.response.status;
+    const message = error.response.data?.message || defaultMessage;
+    
+    console.log(`❌ Error ${status}: ${message}`);
     
     switch (status) {
+      case 400:
+        return `Datos inválidos: ${message}`;
       case 401:
-        return 'Sesión expirada. Por favor, inicia sesión nuevamente.';
+        return 'No autorizado. Por favor, inicia sesión nuevamente.';
       case 403:
         return 'No tienes permisos para realizar esta acción.';
       case 404:
-        return 'El recurso solicitado no fue encontrado.';
+        return 'Recurso no encontrado.';
+      case 409:
+        return 'Conflicto de datos. El recurso ya existe.';
       case 422:
-        return data?.message || 'Datos inválidos. Verifica la información ingresada.';
-      case 429:
-        return 'Demasiadas solicitudes. Intenta nuevamente en unos minutos.';
+        return `Error de validación: ${message}`;
       case 500:
-        return 'Error interno del servidor. Intenta nuevamente más tarde.';
-      case 503:
-        return 'Servicio no disponible. Intenta nuevamente más tarde.';
+        return 'Error interno del servidor. Inténtalo más tarde.';
       default:
-        return data?.message || `Error ${status}: ${defaultMessage}`;
+        return message;
     }
+  } else if (error.request) {
+    // Error de red
+    console.log('❌ Error de red:', error.request);
+    return 'Error de conexión. Verifica tu conexión a internet.';
+  } else {
+    // Error de configuración
+    console.log('❌ Error de configuración:', error.message);
+    return defaultMessage;
   }
-  
-  return error.message || defaultMessage;
 };

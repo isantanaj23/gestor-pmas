@@ -1,11 +1,13 @@
 // client/src/components/project-tabs/SocialCalendar.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext'; // 🆕 NUEVO
 import socialPostService, { socialPostUtils } from '../../services/socialPostService';
 import './SocialCalendar.css';
 
 function SocialCalendar({ projectId, project }) {
   const { user } = useAuth();
+  const { connected: socketConnected, joinProjectRoom, leaveProjectRoom } = useSocket(); // 🆕 NUEVO
   
   // Estados principales
   const [posts, setPosts] = useState([]);
@@ -24,7 +26,58 @@ function SocialCalendar({ projectId, project }) {
   const [notification, setNotification] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [postToDelete, setPostToDelete] = useState(null);
-  
+
+  // 🆕 CONEXIÓN EN TIEMPO REAL
+  useEffect(() => {
+    if (projectId && socketConnected) {
+      console.log('🏠 Uniéndose al room del proyecto para tiempo real:', projectId);
+      joinProjectRoom(projectId);
+
+      // Escuchar eventos de publicaciones sociales
+      const handleSocialPostCreated = (data) => {
+        if (data.project === projectId) {
+          console.log('📱 Nueva publicación creada en tiempo real:', data);
+          loadPosts(); // Recargar publicaciones
+        }
+      };
+
+      const handleSocialPostUpdated = (data) => {
+        if (data.project === projectId) {
+          console.log('✏️ Publicación actualizada en tiempo real:', data);
+          loadPosts(); // Recargar publicaciones
+        }
+      };
+
+      const handleSocialPostDeleted = (data) => {
+        if (data.project === projectId) {
+          console.log('🗑️ Publicación eliminada en tiempo real:', data);
+          loadPosts(); // Recargar publicaciones
+        }
+      };
+
+      const handleSocialPostStatusChanged = (data) => {
+        if (data.project === projectId) {
+          console.log('🔄 Estado de publicación cambiado en tiempo real:', data);
+          loadPosts(); // Recargar publicaciones
+        }
+      };
+
+      // Agregar listeners para eventos personalizados del navegador
+      window.addEventListener('socialPostCreated', handleSocialPostCreated);
+      window.addEventListener('socialPostUpdated', handleSocialPostUpdated);
+      window.addEventListener('socialPostDeleted', handleSocialPostDeleted);
+      window.addEventListener('socialPostStatusChanged', handleSocialPostStatusChanged);
+
+      return () => {
+        leaveProjectRoom(projectId);
+        window.removeEventListener('socialPostCreated', handleSocialPostCreated);
+        window.removeEventListener('socialPostUpdated', handleSocialPostUpdated);
+        window.removeEventListener('socialPostDeleted', handleSocialPostDeleted);
+        window.removeEventListener('socialPostStatusChanged', handleSocialPostStatusChanged);
+      };
+    }
+  }, [projectId, socketConnected, joinProjectRoom, leaveProjectRoom]);
+
   // Estados del formulario
   const [formData, setFormData] = useState({
     platform: 'instagram',
@@ -35,78 +88,40 @@ function SocialCalendar({ projectId, project }) {
     notes: ''
   });
 
-  // Datos de demostración para modo offline
-  const getDemoData = useCallback(() => [
-    {
-      _id: 'cal-demo-1',
-      platform: 'instagram',
-      content: 'Publicación de ejemplo desde calendario 📅 #calendario #social',
-      scheduledDate: new Date().toISOString(),
-      status: 'scheduled',
-      author: { name: user?.name || 'Usuario' },
-      hashtags: ['#calendario', '#social'],
-      notes: 'Publicación de demostración'
-    },
-    {
-      _id: 'cal-demo-2',
-      platform: 'twitter',
-      content: 'Tweet programado para mañana 🐦 ¡No te lo pierdas!',
-      scheduledDate: new Date(Date.now() + 86400000).toISOString(),
-      status: 'scheduled',
-      author: { name: user?.name || 'Usuario' },
-      hashtags: ['#twitter', '#programado'],
-      notes: 'Tweet importante'
-    },
-    {
-      _id: 'cal-demo-3',
-      platform: 'linkedin',
-      content: 'Post profesional para LinkedIn 💼 Compartiendo insights del proyecto',
-      scheduledDate: new Date(Date.now() + 259200000).toISOString(),
-      status: 'draft',
-      author: { name: user?.name || 'Usuario' },
-      hashtags: ['#linkedin', '#profesional'],
-      notes: 'Para audiencia profesional'
-    },
-    {
-      _id: 'cal-demo-4',
-      platform: 'facebook',
-      content: '🚀 ¡Anuncio emocionante! Nuevas funcionalidades disponibles.',
-      scheduledDate: new Date(Date.now() - 86400000).toISOString(),
-      status: 'published',
-      author: { name: user?.name || 'Usuario' },
-      hashtags: ['#facebook', '#anuncio'],
-      notes: 'Post ya publicado'
-    }
-  ], [user]);
+  // 🔥 REMOVIDO: getDemoData - Ya no necesitamos datos de demostración
 
-  // Cargar datos iniciales
+  // 🔥 ACTUALIZADO: Cargar datos desde el backend real
   const loadPosts = useCallback(async () => {
     if (!projectId) return;
     
     try {
       setLoading(true);
+      console.log('📋 Cargando publicaciones del proyecto:', projectId);
+      
       const response = await socialPostService.getProjectPosts(projectId);
       
       if (response.success) {
+        console.log('✅ Publicaciones cargadas desde el servidor:', response.data);
         setPosts(response.data);
         setServerConnected(true);
       } else {
-        throw new Error(response.message || 'Error desconocido');
+        throw new Error(response.message || 'Error al cargar publicaciones');
       }
     } catch (error) {
-      console.error('Error cargando publicaciones:', error);
+      console.error('❌ Error cargando publicaciones desde servidor:', error);
       setServerConnected(false);
       
-      // Usar datos de ejemplo como fallback
-      setPosts(getDemoData());
+      // En lugar de datos de demostración, mostrar mensaje de error
+      setPosts([]);
+      showNotification('⚠️ Error de conexión - No se pudieron cargar las publicaciones', 'warning');
     } finally {
       setLoading(false);
     }
-  }, [projectId, getDemoData]);
+  }, [projectId]);
 
   useEffect(() => {
     loadPosts();
-  }, [loadPosts]);
+  }, [loadPosts]); // 🔥 AGREGADO loadPosts a las dependencias
 
   // Generar días del calendario
   const generateCalendarDays = () => {
@@ -210,17 +225,19 @@ function SocialCalendar({ projectId, project }) {
     setShowDeleteConfirm(true);
   };
 
-  // Confirmar eliminación
+  // 🔥 ACTUALIZADO: Confirmar eliminación con API real
   const confirmDeletePost = async () => {
     const postId = postToDelete.id;
-    console.log('🗑️ Confirmando eliminación de publicación:', postId);
+    console.log('🗑️ Confirmando eliminación de publicación en servidor:', postId);
 
     try {
       if (serverConnected && !postId.startsWith('local-')) {
+        // 🆕 USAR API REAL
         const response = await socialPostService.deletePost(postId);
         
         if (response.success) {
-          await loadPosts();
+          console.log('✅ Publicación eliminada del servidor:', response.data);
+          await loadPosts(); // Recargar desde servidor
           showNotification('🗑️ Publicación eliminada correctamente', 'success');
           
           closeOptionsModal();
@@ -230,7 +247,7 @@ function SocialCalendar({ projectId, project }) {
         }
       }
       
-      // Eliminar localmente
+      // Eliminar localmente (para posts locales o modo offline)
       setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
       showNotification('🗑️ Publicación eliminada localmente', 'success');
       
@@ -249,45 +266,90 @@ function SocialCalendar({ projectId, project }) {
     setPostToDelete(null);
   };
 
-  // Duplicar publicación
-  const handleDuplicatePost = (post, e) => {
+  // 🔥 ACTUALIZADO: Duplicar publicación con API real
+  const handleDuplicatePost = async (post, e) => {
     if (e) e.stopPropagation();
     console.log('📋 Duplicando publicación del calendario:', post);
     
-    const duplicatedPost = {
-      _id: 'local-cal-dup-' + Date.now(),
-      platform: post.platform,
-      content: `[COPIA] ${post.content}`,
-      scheduledDate: new Date(Date.now() + 3600000).toISOString(), // En 1 hora
-      status: 'draft',
-      author: { 
-        name: user?.name || 'Usuario Local', 
-        email: user?.email || 'local@planifica.com' 
-      },
-      hashtags: [...(post.hashtags || [])],
-      notes: `Duplicado de: ${post.notes || 'Sin notas'}`,
-      createdAt: new Date().toISOString()
-    };
+    try {
+      if (serverConnected && !post._id.startsWith('local-')) {
+        // 🆕 USAR API REAL: Duplicar usando el servicio
+        const newScheduledDate = new Date(Date.now() + 3600000).toISOString(); // En 1 hora
+        const response = await socialPostService.duplicatePost(post._id, newScheduledDate);
+        
+        if (response.success) {
+          console.log('✅ Publicación duplicada en servidor:', response.data);
+          await loadPosts(); // Recargar desde servidor
+          showNotification('📋 Publicación duplicada exitosamente', 'success');
+          
+          setShowDayModal(false);
+          closeOptionsModal();
+          return;
+        }
+      }
+      
+      // Fallback: duplicar localmente
+      const duplicatedPost = {
+        _id: 'local-cal-dup-' + Date.now(),
+        platform: post.platform,
+        content: `[COPIA] ${post.content}`,
+        scheduledDate: new Date(Date.now() + 3600000).toISOString(), // En 1 hora
+        project: post.project || projectId,
+        status: 'draft',
+        author: { 
+          name: user?.name || 'Usuario Local', 
+          email: user?.email || 'local@planifica.com' 
+        },
+        hashtags: [...(post.hashtags || [])],
+        notes: `Duplicado de: ${post.notes || 'Sin notas'}`,
+        createdAt: new Date().toISOString()
+      };
+      
+      setPosts(prevPosts => [duplicatedPost, ...prevPosts]);
+      showNotification('📋 Publicación duplicada como borrador local', 'success');
+      
+    } catch (error) {
+      console.error('❌ Error duplicando publicación:', error);
+      
+      // Fallback: duplicar localmente
+      const duplicatedPost = {
+        _id: 'local-cal-dup-' + Date.now(),
+        platform: post.platform,
+        content: `[COPIA] ${post.content}`,
+        scheduledDate: new Date(Date.now() + 3600000).toISOString(), // En 1 hora
+        project: post.project || projectId,
+        status: 'draft',
+        author: { 
+          name: user?.name || 'Usuario Local', 
+          email: user?.email || 'local@planifica.com' 
+        },
+        hashtags: [...(post.hashtags || [])],
+        notes: `Duplicado de: ${post.notes || 'Sin notas'}`,
+        createdAt: new Date().toISOString()
+      };
+      
+      setPosts(prevPosts => [duplicatedPost, ...prevPosts]);
+      setServerConnected(false);
+      showNotification('⚠️ Sin conexión - Publicación duplicada localmente', 'warning');
+    }
     
-    setPosts(prevPosts => [duplicatedPost, ...prevPosts]);
-    showNotification('📋 Publicación duplicada como borrador', 'success');
     setShowDayModal(false);
-    
-    // 🆕 Cerrar modal de opciones
     closeOptionsModal();
   };
 
-  // Cambiar estado de publicación
+  // 🔥 ACTUALIZADO: Cambiar estado de publicación con API real
   const handleChangeStatus = async (postId, newStatus, e) => {
     if (e) e.stopPropagation();
-    console.log('🔄 Cambiando estado en calendario:', postId, 'a', newStatus);
+    console.log('🔄 Cambiando estado en servidor:', postId, 'a', newStatus);
     
     try {
       if (serverConnected && !postId.startsWith('local-')) {
+        // 🆕 USAR API REAL
         const response = await socialPostService.updatePostStatus(postId, newStatus);
         
         if (response.success) {
-          await loadPosts();
+          console.log('✅ Estado cambiado en servidor:', response.data);
+          await loadPosts(); // Recargar desde servidor
           
           // Mensajes más claros con el nuevo sistema
           const statusMessages = {
@@ -305,7 +367,7 @@ function SocialCalendar({ projectId, project }) {
         }
       }
       
-      // Cambiar estado localmente
+      // Cambiar estado localmente (para posts locales o modo offline)
       setPosts(prevPosts => 
         prevPosts.map(post => 
           post._id === postId 
@@ -348,7 +410,7 @@ function SocialCalendar({ projectId, project }) {
     setShowDayModal(false);
   };
 
-  // Manejar envío del formulario de creación
+  // 🔥 ACTUALIZADO: Manejar envío del formulario de creación con API real
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -369,6 +431,7 @@ function SocialCalendar({ projectId, project }) {
         return;
       }
       
+      // 🆕 USAR API REAL: Preparar datos para el backend
       const postData = {
         projectId,
         platform: formData.platform,
@@ -381,11 +444,15 @@ function SocialCalendar({ projectId, project }) {
         notes: formData.notes
       };
 
+      console.log('📝 Creando publicación con datos:', postData);
+
       if (serverConnected) {
+        // 🆕 USAR API REAL
         const response = await socialPostService.createPost(postData);
 
         if (response.success) {
-          await loadPosts();
+          console.log('✅ Publicación creada exitosamente en servidor:', response.data);
+          await loadPosts(); // Recargar desde servidor
           resetForm();
           setShowCreateModal(false);
           showNotification('✅ Publicación creada exitosamente', 'success');
@@ -393,12 +460,16 @@ function SocialCalendar({ projectId, project }) {
           throw new Error(response.message || 'Error desconocido');
         }
       } else {
-        // Modo offline
+        // Modo offline - crear localmente
         const localPost = {
           _id: 'local-cal-' + Date.now(),
           ...postData,
+          project: projectId,
           status: 'scheduled',
-          author: { name: user?.name || 'Usuario Local' },
+          author: { 
+            name: user?.name || 'Usuario Local',
+            email: user?.email || 'local@planifica.com'
+          },
           createdAt: new Date().toISOString()
         };
         
@@ -408,7 +479,7 @@ function SocialCalendar({ projectId, project }) {
         showNotification('📱 Publicación guardada localmente', 'success');
       }
     } catch (error) {
-      console.error('Error al guardar publicación:', error);
+      console.error('❌ Error al guardar publicación:', error);
       
       // Fallback: crear localmente
       const localPost = {
@@ -416,6 +487,7 @@ function SocialCalendar({ projectId, project }) {
         platform: formData.platform,
         content: formData.content,
         scheduledDate: new Date(`${formData.scheduledDate}T${formData.scheduledTime}`).toISOString(),
+        project: projectId,
         status: 'scheduled',
         author: { name: user?.name || 'Usuario Local' },
         hashtags: formData.hashtags ? 
@@ -434,12 +506,12 @@ function SocialCalendar({ projectId, project }) {
     }
   };
 
-  // Actualizar publicación existente
+  // 🔥 ACTUALIZADO: Actualizar publicación existente con API real
   const handleUpdatePost = async (e) => {
     e.preventDefault();
     
     try {
-      console.log('✏️ Actualizando publicación en calendario:', editingPost._id, formData);
+      console.log('✏️ Actualizando publicación en servidor:', editingPost._id, formData);
       
       // Validar contenido
       const validation = socialPostUtils.validateContent(formData.content, formData.platform);
@@ -460,6 +532,7 @@ function SocialCalendar({ projectId, project }) {
         }
       }
 
+      // 🆕 USAR API REAL: Preparar datos para actualización
       const updateData = {
         platform: formData.platform,
         content: formData.content,
@@ -472,7 +545,7 @@ function SocialCalendar({ projectId, project }) {
       };
 
       if (serverConnected && !editingPost._id.startsWith('local-')) {
-        // Intentar actualizar en el servidor
+        // 🆕 USAR API REAL
         const response = await socialPostService.updatePost(editingPost._id, updateData);
         
         if (response.success) {
@@ -707,7 +780,7 @@ function SocialCalendar({ projectId, project }) {
         </div>
 
         {/* Botón crear publicación */}
-        {/* <button
+        <button
           className="btn btn-primary"
           onClick={() => {
             resetForm();
@@ -716,7 +789,7 @@ function SocialCalendar({ projectId, project }) {
         >
           <i className="bi bi-plus-lg me-1"></i>
           Nueva Publicación
-        </button> */}
+        </button>
       </div>
 
       {/* Estadísticas rápidas */}

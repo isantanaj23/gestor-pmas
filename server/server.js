@@ -1,34 +1,40 @@
-// Importar dependencias
+// server/server.js
 const express = require("express");
 const cors = require('cors');
 const path = require('path');
-const http = require('http'); // 🔥 NECESARIO PARA SOCKET.IO
+const http = require('http');
 const helmet = require("helmet");
 const morgan = require("morgan");
 const compression = require("compression");
 const connectDB = require("./config/database");
 
-// Importar rutas existentes
+// Importar rutas
 const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
 const contactRoutes = require('./routes/contacts');
-const notificationRoutes = require('./routes/notifications'); // 🔥 MOVIDO AQUÍ
+const activityRoutes = require('./routes/activities');
+const dashboardRoutes = require('./routes/dashboard');
+const notificationRoutes = require('./routes/notifications');
+const socialPostRoutes = require('./routes/socialPostRoutes'); // 🆕 NUEVA RUTA
 
-// 🔥 IMPORTAR SOCKET HANDLER
+// Socket.io
 const SocketHandler = require('./socket/socketHandler');
 
 // Cargar variables de entorno
 require("dotenv").config();
 
-// 🔥 CONECTAR A MONGODB PRIMERO
-connectDB();
-
 // Crear aplicación Express
 const app = express();
 
-// 🔥 CREAR SERVIDOR HTTP PARA SOCKET.IO
+// Crear servidor HTTP para Socket.io
 const server = http.createServer(app);
+
+// =================================================================
+// CONFIGURAR SOCKET.IO
+// =================================================================
+const socketHandler = new SocketHandler(server);
+app.set('socketHandler', socketHandler);
 
 // =================================================================
 // MIDDLEWARE
@@ -78,11 +84,18 @@ app.get("/", (req, res) => {
     status: "OK",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
-    port: process.env.PORT || 3001, // 🔥 CAMBIAR A 3001
+    port: process.env.PORT || 5000,
     endpoints: {
       health: "/health",
       api: "/api",
-      notifications: "/api/notifications" // 🔥 AGREGAR
+      auth: "/api/auth",
+      projects: "/api/projects",
+      tasks: "/api/tasks",
+      contacts: "/api/contacts",
+      activities: "/api/activities",
+      dashboard: "/api/dashboard",
+      notifications: "/api/notifications",
+      socialPosts: "/api/social-posts" // 🆕 NUEVA RUTA
     },
   });
 });
@@ -98,10 +111,8 @@ app.get("/health", (req, res) => {
       used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + " MB",
       total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + " MB",
     },
-    features: {
-      socketio: !!global.socketHandler,
-      notifications: true,
-      database: "connected"
+    connections: {
+      activeConnections: socketHandler.getConnectionStats()
     }
   });
 });
@@ -112,14 +123,12 @@ app.get("/api", (req, res) => {
     success: true,
     message: "API endpoints funcionando",
     availableRoutes: [
-      "GET /", 
-      "GET /health", 
+      "GET /",
+      "GET /health",
       "GET /api",
-      "GET /api/auth",
-      "GET /api/projects", 
-      "GET /api/tasks",
-      "GET /api/contacts",
-      "GET /api/notifications" // 🔥 AGREGAR
+      "POST /api/auth/login",
+      "GET /api/projects",
+      "GET /api/social-posts/project/:projectId" // 🆕 NUEVA RUTA
     ],
   });
 });
@@ -129,31 +138,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/contacts', contactRoutes);
-app.use('/api/activities', require('./routes/activities'));
-app.use('/api/dashboard', require('./routes/dashboard'));
-
-// 🔥 RUTA DE NOTIFICACIONES
+app.use('/api/activities', activityRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
-
-// =================================================================
-// CONFIGURAR SOCKET.IO
-// =================================================================
-
-let socketHandler = null;
-
-try {
-  console.log('🔌 Inicializando Socket.io...');
-  socketHandler = new SocketHandler(server);
-  
-  // Hacer disponible globalmente para las rutas
-  global.socketHandler = socketHandler;
-  
-  console.log('✅ Socket.io configurado correctamente');
-} catch (error) {
-  console.error('❌ Error configurando Socket.io:', error.message);
-  console.log('⚠️ Continuando sin Socket.io...');
-  global.socketHandler = null;
-}
+app.use('/api/social-posts', socialPostRoutes); // 🆕 NUEVA RUTA
 
 // =================================================================
 // MANEJO DE ERRORES
@@ -164,49 +152,13 @@ app.use("*", (req, res) => {
   res.status(404).json({
     success: false,
     message: `Ruta ${req.originalUrl} no encontrada`,
-    availableRoutes: [
-      "/", 
-      "/health", 
-      "/api",
-      "/api/auth",
-      "/api/projects",
-      "/api/tasks", 
-      "/api/contacts",
-      "/api/notifications"
-    ],
+    availableRoutes: ["/", "/health", "/api"],
   });
 });
 
 // Manejo de errores global
 app.use((err, req, res, next) => {
   console.error("❌ Error:", err.message);
-
-  // Error de validación de Mongoose
-  if (err.name === 'ValidationError') {
-    const errors = Object.values(err.errors).map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: 'Error de validación',
-      errors
-    });
-  }
-
-  // Error de JWT
-  if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token inválido'
-    });
-  }
-
-  // Error de MongoDB duplicado
-  if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    return res.status(400).json({
-      success: false,
-      message: `El ${field} ya existe`
-    });
-  }
 
   res.status(err.status || 500).json({
     success: false,
@@ -225,9 +177,9 @@ app.use((err, req, res, next) => {
 // INICIAR SERVIDOR
 // =================================================================
 
-const PORT = process.env.PORT || 3001; // 🔥 CAMBIAR A 3001
+const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => { // 🔥 USAR server EN LUGAR DE app
+server.listen(PORT, () => {
   console.log("=".repeat(50));
   console.log("🚀 PLANIFICA+ SERVER INICIADO");
   console.log("=".repeat(50));
@@ -237,24 +189,16 @@ server.listen(PORT, () => { // 🔥 USAR server EN LUGAR DE app
   console.log(`⏰ Iniciado: ${new Date().toLocaleString("es-ES")}`);
   console.log("=".repeat(50));
   console.log(`🔔 Sistema de notificaciones activo`);
-  
-  if (global.socketHandler) {
-    console.log(`🔌 Socket.io disponible en: ws://localhost:${PORT}/socket.io/`);
-    console.log(`👥 Usuarios conectados: ${global.socketHandler.getConnectedUsers().length}`);
-  } else {
-    console.log(`⚠️ Socket.io NO disponible`);
-  }
-  
+  console.log(`📱 Socket.io configurado para tiempo real`);
+  console.log(`📅 Rutas de Social Posts disponibles`);
   console.log("✅ Servidor listo para recibir requests");
   console.log("✅ CORS configurado para métodos: GET, POST, PUT, DELETE, PATCH, OPTIONS");
-  console.log(`🌐 Cliente esperado en: http://localhost:3000`);
   console.log("");
 });
 
 // Manejo de errores no capturados
 process.on('unhandledRejection', (err, promise) => {
-  console.error('❌ Error no manejado:', err.message);
-  console.log('🔄 Cerrando servidor...');
+  console.log('Error no manejado:', err.message);
   server.close(() => {
     process.exit(1);
   });
@@ -263,12 +207,6 @@ process.on('unhandledRejection', (err, promise) => {
 // Manejo de cierre graceful
 process.on("SIGTERM", () => {
   console.log("🛑 Señal SIGTERM recibida, cerrando servidor...");
-  
-  // Desconectar Socket.io
-  if (global.socketHandler) {
-    console.log("🔌 Cerrando conexiones Socket.io...");
-  }
-  
   server.close(() => {
     console.log("✅ Servidor cerrado correctamente");
     process.exit(0);
@@ -277,17 +215,11 @@ process.on("SIGTERM", () => {
 
 process.on("SIGINT", () => {
   console.log("\n🛑 Señal SIGINT recibida, cerrando servidor...");
-  
-  // Desconectar Socket.io
-  if (global.socketHandler) {
-    console.log("🔌 Cerrando conexiones Socket.io...");
-  }
-  
   server.close(() => {
     console.log("✅ Servidor cerrado correctamente");
     process.exit(0);
   });
 });
 
-// Exportar para testing
-module.exports = { app, server, socketHandler };
+// Conectar a MongoDB
+connectDB();
