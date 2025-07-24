@@ -108,3 +108,72 @@ export const activityAPI = {
   update: (id, data) => API.put(`/activities/${id}`, data),
   complete: (id, data) => API.patch(`/activities/${id}/complete`, data),
 };
+
+// ⭐ NUEVO: API para publicaciones sociales
+export const socialPostAPI = {
+  // Crear nueva publicación
+  create: (data) => API.post('/social-posts', data),
+  
+  // Obtener publicaciones de un proyecto
+  getByProject: (projectId, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const url = `/social-posts/project/${projectId}${queryString ? `?${queryString}` : ''}`;
+    return API.get(url);
+  },
+  
+  // Obtener una publicación específica
+  getById: (id) => API.get(`/social-posts/${id}`),
+  
+  // Actualizar publicación
+  update: (id, data) => API.put(`/social-posts/${id}`, data),
+  
+  // Eliminar publicación
+  delete: (id) => API.delete(`/social-posts/${id}`),
+  
+  // Cambiar estado de publicación
+  updateStatus: (id, status) => API.patch(`/social-posts/${id}/status`, { status }),
+  
+  // Obtener estadísticas de un proyecto
+  getStats: (projectId) => API.get(`/social-posts/stats/${projectId}`),
+  
+  // Duplicar publicación
+  duplicate: (id, newScheduledDate) => API.post(`/social-posts/${id}/duplicate`, { 
+    scheduledDate: newScheduledDate 
+  }),
+};
+
+// Función helper para manejar errores de API de forma consistente
+export const handleApiError = (error, defaultMessage = 'Ha ocurrido un error') => {
+  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+    return 'Tiempo de espera agotado. Verifica tu conexión a internet.';
+  }
+  
+  if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+    return 'Sin conexión al servidor. Verifica tu conexión a internet.';
+  }
+  
+  if (error.response) {
+    const { status, data } = error.response;
+    
+    switch (status) {
+      case 401:
+        return 'Sesión expirada. Por favor, inicia sesión nuevamente.';
+      case 403:
+        return 'No tienes permisos para realizar esta acción.';
+      case 404:
+        return 'El recurso solicitado no fue encontrado.';
+      case 422:
+        return data?.message || 'Datos inválidos. Verifica la información ingresada.';
+      case 429:
+        return 'Demasiadas solicitudes. Intenta nuevamente en unos minutos.';
+      case 500:
+        return 'Error interno del servidor. Intenta nuevamente más tarde.';
+      case 503:
+        return 'Servicio no disponible. Intenta nuevamente más tarde.';
+      default:
+        return data?.message || `Error ${status}: ${defaultMessage}`;
+    }
+  }
+  
+  return error.message || defaultMessage;
+};

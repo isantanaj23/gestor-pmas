@@ -133,6 +133,14 @@ const TaskSchema = new mongoose.Schema({
       type: Date,
       default: Date.now
     },
+     updatedAt: {
+      type: Date,
+      default: Date.now
+    },
+    isEdited: {
+      type: Boolean,
+      default: false
+    },
     editedAt: {
       type: Date
     }

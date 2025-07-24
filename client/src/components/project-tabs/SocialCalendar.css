@@ -1,0 +1,370 @@
+/* client/src/components/project-tabs/SocialCalendar.css */
+
+/* Contenedor principal del calendario */
+.social-calendar {
+  padding: 0;
+}
+
+/* Grid del calendario */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background-color: #dee2e6;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Headers de días de la semana */
+.calendar-header {
+  background-color: #f8f9fa;
+  padding: 12px 8px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #6c757d;
+  border-bottom: 2px solid #dee2e6;
+}
+
+/* Días del calendario */
+.calendar-day {
+  background-color: white;
+  min-height: 120px;
+  padding: 8px 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.calendar-day:hover {
+  background-color: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Día actual */
+.calendar-day.today {
+  background-color: #e3f2fd;
+  border: 2px solid #2196f3;
+}
+
+.calendar-day.today .day-number {
+  background-color: #2196f3;
+  color: white;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  margin: 0 auto 8px;
+}
+
+/* Días de otros meses */
+.calendar-day.other-month {
+  background-color: #f8f9fa;
+  color: #adb5bd;
+}
+
+.calendar-day.other-month:hover {
+  background-color: #e9ecef;
+}
+
+/* Número del día */
+.day-number {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+/* Contenedor de publicaciones del día */
+.day-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 80px;
+  overflow: hidden;
+}
+
+/* Indicadores de publicaciones */
+.post-indicator {
+  background-color: white;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 20px;
+}
+
+.post-indicator:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  z-index: 1;
+}
+
+/* Colores por estado */
+.post-indicator.border-warning {
+  border-color: #ffc107;
+  background-color: #fff8e1;
+}
+
+.post-indicator.border-success {
+  border-color: #28a745;
+  background-color: #f0fff4;
+}
+
+.post-indicator.border-danger {
+  border-color: #dc3545;
+  background-color: #ffeaea;
+}
+
+.post-indicator.border-secondary {
+  border-color: #6c757d;
+  background-color: #f8f9fa;
+}
+
+/* Tiempo de la publicación */
+.post-time {
+  font-size: 0.65rem;
+  color: #6c757d;
+  margin-left: 4px;
+}
+
+/* Indicador de más publicaciones */
+.more-posts {
+  text-align: center;
+  font-size: 0.7rem;
+  color: #6c757d;
+  font-style: italic;
+  padding: 2px;
+  background-color: #f8f9fa;
+  border-radius: 3px;
+  margin-top: 2px;
+}
+
+/* Vista de lista */
+.list-container {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* Icono de plataforma en vista de lista */
+.platform-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .calendar-grid {
+    font-size: 0.8rem;
+  }
+  
+  .calendar-day {
+    min-height: 80px;
+    padding: 4px 3px;
+  }
+  
+  .calendar-header {
+    padding: 8px 4px;
+    font-size: 0.75rem;
+  }
+  
+  .day-number {
+    font-size: 0.8rem;
+    margin-bottom: 4px;
+  }
+  
+  .post-indicator {
+    padding: 1px 3px;
+    font-size: 0.65rem;
+    min-height: 16px;
+  }
+  
+  .day-posts {
+    max-height: 50px;
+  }
+  
+  .post-time {
+    display: none; /* Ocultar tiempo en móviles */
+  }
+}
+
+@media (max-width: 576px) {
+  .calendar-day {
+    min-height: 60px;
+    padding: 2px;
+  }
+  
+  .calendar-header {
+    padding: 6px 2px;
+    font-size: 0.7rem;
+  }
+  
+  .post-indicator {
+    padding: 1px 2px;
+    font-size: 0.6rem;
+    min-height: 14px;
+  }
+  
+  .day-posts {
+    max-height: 30px;
+  }
+  
+  .more-posts {
+    font-size: 0.6rem;
+  }
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.calendar-day {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Modal overlay personalizado */
+.modal.show {
+  background-color: rgba(0,0,0,0.5);
+  backdrop-filter: blur(2px);
+}
+
+/* Estilos para el contador de caracteres */
+.form-text {
+  text-align: right;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.form-text.text-warning {
+  color: #856404 !important;
+}
+
+.form-text.text-danger {
+  color: #721c24 !important;
+}
+
+/* Estilos para hashtags */
+.badge.bg-light {
+  border: 1px solid #dee2e6;
+  color: #495057 !important;
+}
+
+/* Estados de carga */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255,255,255,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* Tooltip personalizado para publicaciones */
+.post-indicator[title] {
+  position: relative;
+}
+
+/* Mejoras de accesibilidad */
+.calendar-day:focus {
+  outline: 2px solid #0d6efd;
+  outline-offset: -2px;
+}
+
+.post-indicator:focus {
+  outline: 2px solid #0d6efd;
+  outline-offset: 1px;
+}
+
+/* Estados hover mejorados */
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+/* Transiciones suaves */
+* {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Scroll personalizado para la vista de lista */
+.list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.list-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.list-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.list-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Efectos de hover para las tarjetas de lista */
+.list-container .card {
+  transition: all 0.3s ease;
+  border: 1px solid #dee2e6;
+}
+
+.list-container .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-color: #0d6efd;
+}
+
+/* Indicadores de estado mejorados */
+.badge {
+  font-size: 0.75rem;
+  padding: 0.35em 0.65em;
+  font-weight: 500;
+}
+
+/* Mejoras para dispositivos táctiles */
+@media (pointer: coarse) {
+  .calendar-day {
+    min-height: 100px;
+  }
+  
+  .post-indicator {
+    min-height: 24px;
+    padding: 4px 8px;
+  }
+  
+  .btn {
+    min-height: 44px;
+  }
+}
