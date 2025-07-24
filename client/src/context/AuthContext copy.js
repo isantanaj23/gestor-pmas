@@ -1,4 +1,4 @@
-// client/src/context/AuthContext.js - VERSIÓN CON PERSISTENCIA ARREGLADA
+// client/src/context/AuthContext.js
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import API from '../services/api';
 
@@ -7,7 +7,7 @@ const initialState = {
   user: null,
   token: null,
   isAuthenticated: false,
-  isLoading: true, // 🔥 Importante: true para mostrar loading mientras verifica
+  isLoading: true,
   error: null,
 };
 
@@ -23,7 +23,6 @@ const AUTH_ACTIONS = {
   LOGOUT: 'LOGOUT',
   CLEAR_ERROR: 'CLEAR_ERROR',
   SET_LOADING: 'SET_LOADING',
-  RESTORE_SESSION: 'RESTORE_SESSION', // 🆕 Nueva acción para restaurar sesión
 };
 
 // Reducer para manejar el estado
@@ -42,25 +41,6 @@ const authReducer = (state, action) => {
       // Guardar en localStorage
       localStorage.setItem('planifica_token', action.payload.token);
       localStorage.setItem('planifica_user', JSON.stringify(action.payload.user));
-      
-      console.log('✅ Sesión guardada en localStorage');
-      console.log('   Token guardado:', !!action.payload.token);
-      console.log('   Usuario guardado:', action.payload.user.name || action.payload.user.email);
-      
-      return {
-        ...state,
-        user: action.payload.user,
-        token: action.payload.token,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      };
-
-    case AUTH_ACTIONS.RESTORE_SESSION:
-      // 🆕 Restaurar sesión desde localStorage sin verificar con servidor
-      console.log('🔄 Restaurando sesión desde localStorage');
-      console.log('   Token disponible:', !!action.payload.token);
-      console.log('   Usuario disponible:', !!action.payload.user);
       
       return {
         ...state,
@@ -100,8 +80,6 @@ const authReducer = (state, action) => {
       localStorage.removeItem('planifica_token');
       localStorage.removeItem('planifica_user');
       
-      console.log('🔓 Sesión cerrada y localStorage limpiado');
-      
       return {
         ...state,
         user: null,
@@ -138,133 +116,76 @@ export const AuthProvider = ({ children }) => {
   // Función de logout usando useCallback para evitar re-renders
   const logout = useCallback(async () => {
     try {
-      console.log('🔓 Iniciando logout...');
       await API.post('/auth/logout');
-      console.log('✅ Logout exitoso en servidor');
     } catch (error) {
-      console.error('⚠️ Error en logout del servidor:', error);
-      // Continuar con logout local aunque falle el servidor
+      console.error('Error en logout del servidor:', error);
     } finally {
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
   }, []);
 
-  // 🆕 Función para restaurar sesión desde localStorage
-  const restoreSession = useCallback(() => {
-    console.log('🔍 Intentando restaurar sesión desde localStorage...');
-    
+  // Verificar estado de autenticación - OPTIMIZADO
+  const checkAuthState = useCallback(async () => {
     const token = localStorage.getItem('planifica_token');
-    const userStr = localStorage.getItem('planifica_user');
     
-    console.log('   Token encontrado:', !!token);
-    console.log('   Usuario encontrado:', !!userStr);
-    
-    if (token && userStr) {
+    if (token) {
       try {
-        const user = JSON.parse(userStr);
-        console.log('✅ Datos válidos encontrados en localStorage');
-        console.log('   Usuario:', user.name || user.email);
-        console.log('   Token (primeros 20):', token.substring(0, 20) + '...');
+        const response = await API.get('/auth/me');
         
-        // Restaurar inmediatamente sin verificar con servidor
-        dispatch({
-          type: AUTH_ACTIONS.RESTORE_SESSION,
-          payload: { user, token }
-        });
+        console.log('🔍 Respuesta de /auth/me:', response.data);
         
-        return true;
+        if (response.data.success) {
+          // Ajustar según la estructura real de la respuesta
+          const userData = response.data.data || response.data.user || response.data;
+          
+          dispatch({
+            type: AUTH_ACTIONS.LOAD_USER,
+            payload: userData,
+          });
+        } else {
+          logout();
+        }
       } catch (error) {
-        console.error('❌ Error parseando datos de localStorage:', error);
-        localStorage.removeItem('planifica_token');
-        localStorage.removeItem('planifica_user');
+        console.error('Error verificando autenticación:', error);
+        logout();
       }
     } else {
-      console.log('❌ No hay datos de sesión en localStorage');
-    }
-    
-    // Si no hay datos válidos, parar loading
-    dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false });
-    return false;
-  }, []);
-
-  // Verificar estado de autenticación con el servidor (opcional)
-  const verifyTokenWithServer = useCallback(async () => {
-    const token = localStorage.getItem('planifica_token');
-    
-    if (!token) {
-      console.log('🔍 No hay token para verificar con servidor');
-      return false;
-    }
-    
-    try {
-      console.log('🔍 Verificando token con servidor...');
-      const response = await API.get('/auth/me');
-      
-      console.log('🔍 Respuesta de /auth/me:', response.data);
-      
-      if (response.data.success) {
-        const userData = response.data.data || response.data.user || response.data;
-        
-        console.log('✅ Token válido, actualizando datos de usuario');
-        dispatch({
-          type: AUTH_ACTIONS.LOAD_USER,
-          payload: userData,
-        });
-        return true;
-      } else {
-        console.log('❌ Token inválido según servidor');
-        logout();
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Error verificando token con servidor:', error);
-      
-      // Si es error de red, mantener sesión local
-      if (error.code === 'NETWORK_ERROR' || !navigator.onLine) {
-        console.log('🌐 Error de red, manteniendo sesión local');
-        return true;
-      }
-      
-      // Si es error de autenticación, hacer logout
-      logout();
-      return false;
+      dispatch({
+        type: AUTH_ACTIONS.SET_LOADING,
+        payload: false,
+      });
     }
   }, [logout]);
 
-  // 🔥 INICIALIZACIÓN AL MONTAR EL COMPONENTE
+  // Verificar autenticación solo una vez al montar
   useEffect(() => {
-    console.log('🚀 AuthProvider inicializando...');
-    
-    // Paso 1: Restaurar inmediatamente desde localStorage
-    const restored = restoreSession();
-    
-    // Paso 2: Si se restauró, verificar opcionalmente con servidor en background
-    if (restored) {
-      console.log('🔄 Verificando token con servidor en background...');
-      // Verificar en background sin bloquear la UI
-      setTimeout(() => {
-        verifyTokenWithServer();
-      }, 1000);
-    }
-  }, []); // 🔥 Solo al montar, sin dependencias
+    checkAuthState();
+  }, []); // Dependencias vacías - solo se ejecuta una vez
 
   // Función de login
   const login = useCallback(async (email, password) => {
     dispatch({ type: AUTH_ACTIONS.LOGIN_START });
     
     try {
-      console.log('🔑 Iniciando login para:', email);
-      const response = await API.post('/auth/login', { email, password });
+      const response = await API.post('/auth/login', {
+        email,
+        password,
+      });
 
-      console.log('🔍 Respuesta del login:', response.data);
+      console.log('🔍 Respuesta completa del login:', response);
+      console.log('🔍 response.data:', response.data);
+      console.log('🔍 response.data.data:', response.data.data);
 
       if (response.data && response.data.success) {
+        // Determinar la estructura correcta de los datos
         let userData, token;
         
         if (response.data.data) {
+          // Estructura: { success: true, data: { user: {}, token: "" } }
           userData = response.data.data.user;
           token = response.data.data.token;
         } else if (response.data.user) {
+          // Estructura: { success: true, user: {}, token: "" }
           userData = response.data.user;
           token = response.data.token;
         } else {
@@ -272,47 +193,55 @@ export const AuthProvider = ({ children }) => {
           throw new Error('Estructura de respuesta inválida');
         }
 
-        console.log('✅ Login exitoso:', userData.name || userData.email);
+        console.log('✅ Datos extraídos:', { userData, token });
 
         dispatch({
           type: AUTH_ACTIONS.LOGIN_SUCCESS,
-          payload: { user: userData, token }
+          payload: {
+            user: userData,
+            token: token,
+          },
         });
 
         return { success: true };
       } else {
-        const errorMsg = response.data.message || 'Error en el login';
-        console.log('❌ Login falló:', errorMsg);
-        
         dispatch({
           type: AUTH_ACTIONS.LOGIN_FAIL,
-          payload: errorMsg
+          payload: response.data.message || 'Error en el login',
         });
 
-        return { success: false, message: errorMsg };
+        return { success: false, message: response.data.message };
       }
     } catch (error) {
-      console.error('🚨 Error en login:', error);
+      console.error('🚨 Error completo en login:', {
+        message: error.message,
+        response: error.response,
+        request: error.request,
+        config: error.config
+      });
       
       const errorMessage = error.response?.data?.message || error.message || 'Error de conexión';
       
       dispatch({
         type: AUTH_ACTIONS.LOGIN_FAIL,
-        payload: errorMessage
+        payload: errorMessage,
       });
 
       return { success: false, message: errorMessage };
     }
   }, []);
 
-  // Función de registro (sin cambios)
+  // Función de registro
   const register = useCallback(async (userData) => {
     dispatch({ type: AUTH_ACTIONS.REGISTER_START });
     
     try {
       const response = await API.post('/auth/register', userData);
 
+      console.log('🔍 Respuesta del registro:', response.data);
+
       if (response.data && response.data.success) {
+        // Usar la misma lógica que en login para extraer datos
         let userResult, token;
         
         if (response.data.data) {
@@ -325,14 +254,17 @@ export const AuthProvider = ({ children }) => {
 
         dispatch({
           type: AUTH_ACTIONS.REGISTER_SUCCESS,
-          payload: { user: userResult, token }
+          payload: {
+            user: userResult,
+            token: token,
+          },
         });
 
         return { success: true };
       } else {
         dispatch({
           type: AUTH_ACTIONS.REGISTER_FAIL,
-          payload: response.data.message || 'Error en el registro'
+          payload: response.data.message || 'Error en el registro',
         });
 
         return { success: false, message: response.data.message };
@@ -342,7 +274,7 @@ export const AuthProvider = ({ children }) => {
       
       dispatch({
         type: AUTH_ACTIONS.REGISTER_FAIL,
-        payload: errorMessage
+        payload: errorMessage,
       });
 
       return { success: false, message: errorMessage };
@@ -358,22 +290,13 @@ export const AuthProvider = ({ children }) => {
   const updateUser = useCallback((userData) => {
     dispatch({
       type: AUTH_ACTIONS.LOAD_USER,
-      payload: userData
+      payload: userData,
     });
+    // Actualizar localStorage
     localStorage.setItem('planifica_user', JSON.stringify(userData));
   }, []);
 
-  // 🔍 Debug del estado actual
-  useEffect(() => {
-    console.log('📊 Estado actual del AuthContext:');
-    console.log('   isAuthenticated:', state.isAuthenticated);
-    console.log('   isLoading:', state.isLoading);
-    console.log('   hasUser:', !!state.user);
-    console.log('   hasToken:', !!state.token);
-    console.log('   error:', state.error);
-  }, [state]);
-
-  // Valores del contexto
+  // Valores que se pasarán a los componentes - MEMOIZADOS
   const contextValue = {
     // Estado
     user: state.user,
@@ -381,17 +304,13 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: state.isAuthenticated,
     isLoading: state.isLoading,
     error: state.error,
-    
     // Funciones
     login,
     register,
     logout,
     clearError,
     updateUser,
-    
-    // 🆕 Funciones adicionales
-    restoreSession,
-    verifyTokenWithServer
+    checkAuthState,
   };
 
   return (
