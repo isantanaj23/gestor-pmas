@@ -1,7 +1,9 @@
+// client/src/components/project-tabs/ProjectSocial.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import socialPostService, { socialPostUtils } from '../../services/socialPostService';
 import SocialCalendar from './SocialCalendar';
+import './ProjectSocial.css';
 
 const ProjectSocial = ({ projectId, project }) => {
   const { user } = useAuth();
@@ -9,11 +11,17 @@ const ProjectSocial = ({ projectId, project }) => {
   // Estados principales
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // 🔧 DEBUG: Log para verificar el estado de posts
+  console.log('🔍 ProjectSocial - posts actual:', posts, 'es array:', Array.isArray(posts));
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [showEditPost, setShowEditPost] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [viewMode, setViewMode] = useState('list'); // 'list' o 'calendar'
   const [serverConnected, setServerConnected] = useState(true);
+  
+  // 🆕 NUEVO: Estado para notificaciones
+  const [notification, setNotification] = useState(null);
   
   // Estados de filtros
   const [filters, setFilters] = useState({
@@ -23,6 +31,10 @@ const ProjectSocial = ({ projectId, project }) => {
     dateFrom: '',
     dateTo: ''
   });
+  
+  // 🆕 NUEVO: Estado separado para el input de búsqueda (sin causar re-renders)
+  const [searchInput, setSearchInput] = useState('');
+  
   const [showFilters, setShowFilters] = useState(false);
   
   // Estado para mostrar acciones de cada post
@@ -46,100 +58,149 @@ const ProjectSocial = ({ projectId, project }) => {
     { id: 'tiktok', name: 'TikTok', icon: 'bi-tiktok', color: 'dark' }
   ];
 
+  // 🆕 NUEVO: Sistema de notificaciones (wrapped in useCallback)
+  const showNotification = useCallback((message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  }, []);
+
   // Datos de demostración (fallback cuando no hay conexión)
   const getDemoData = useCallback(() => [
     {
       _id: 'demo-1',
       platform: 'instagram',
-      content: '¡Estamos trabajando en algo increíble! 🚀 #proyecto #desarrollo #planifica',
-      scheduledDate: new Date(Date.now() + 3600000).toISOString(),
-      status: 'scheduled',
-      author: { 
-        name: user?.name || 'Usuario Demo', 
-        email: user?.email || 'demo@planifica.com' 
-      },
-      hashtags: ['#proyecto', '#desarrollo', '#planifica'],
-      notes: 'Publicación de demostración - primera del proyecto',
-      createdAt: new Date().toISOString()
-    },
-    {
-      _id: 'demo-2',
-      platform: 'twitter',
-      content: 'Nuevo update del proyecto: Ya tenemos la autenticación funcionando perfectamente 🔐✅',
-      scheduledDate: new Date(Date.now() - 86400000).toISOString(),
-      status: 'published',
-      author: { 
-        name: user?.name || 'Usuario Demo', 
-        email: user?.email || 'demo@planifica.com' 
-      },
-      hashtags: ['#update', '#autenticación', '#tecnología'],
-      notes: 'Update técnico sobre avances',
-      createdAt: new Date(Date.now() - 86400000).toISOString()
-    },
-    {
-      _id: 'demo-3',
-      platform: 'linkedin',
-      content: 'Compartiendo el progreso de nuestro proyecto de gestión empresarial. Las herramientas digitales están transformando la forma en que trabajamos. 💼',
-      scheduledDate: new Date(Date.now() + 259200000).toISOString(),
-      status: 'draft',
-      author: { 
-        name: user?.name || 'Usuario Demo', 
-        email: user?.email || 'demo@planifica.com' 
-      },
-      hashtags: ['#gestión', '#empresarial', '#transformacióndigital'],
-      notes: 'Publicación profesional para LinkedIn',
-      createdAt: new Date().toISOString()
-    },
-    {
-      _id: 'demo-4',
-      platform: 'facebook',
-      content: '📢 ¡Grandes noticias! Nuestro equipo ha logrado implementar nuevas funcionalidades que harán más fácil la gestión de proyectos.',
+      content: '¡Estamos trabajando en algo increíble! 🚀 Muy pronto tendremos grandes noticias que compartir con todos ustedes. #innovación #desarrollo #futuro',
       scheduledDate: new Date(Date.now() + 86400000).toISOString(),
       status: 'scheduled',
       author: { 
         name: user?.name || 'Usuario Demo', 
         email: user?.email || 'demo@planifica.com' 
       },
-      hashtags: ['#noticias', '#equipo', '#funcionalidades'],
-      notes: 'Anuncio importante para Facebook',
+      hashtags: ['#innovación', '#desarrollo', '#futuro'],
+      notes: 'Publicación programada para mañana',
+      createdAt: new Date().toISOString()
+    },
+    {
+      _id: 'demo-2',
+      platform: 'twitter',
+      content: 'Reflexionando sobre los avances del equipo esta semana. El progreso constante es clave para el éxito! 💪 #productividad #equipo',
+      scheduledDate: new Date(Date.now() + 172800000).toISOString(),
+      status: 'draft',
+      author: { 
+        name: user?.name || 'Usuario Demo', 
+        email: user?.email || 'demo@planifica.com' 
+      },
+      hashtags: ['#productividad', '#equipo'],
+      notes: 'Borrador para revisar',
       createdAt: new Date().toISOString()
     }
   ], [user]);
 
-  // Cargar publicaciones del backend
+  // Función simplificada para recargar publicaciones (sin filtros, siempre carga todo)
   const loadPosts = useCallback(async () => {
     if (!projectId) return;
     
     try {
       setLoading(true);
-      console.log('🔄 Cargando publicaciones del proyecto:', projectId);
+      console.log('🔄 Recargando todas las publicaciones del proyecto:', projectId);
       
-      const response = await socialPostService.getProjectPosts(projectId, filters);
+      // Siempre cargar todas las publicaciones sin filtros
+      const response = await socialPostService.getProjectPosts(projectId);
       
-      if (response.success) {
-        console.log('✅ Publicaciones cargadas:', response.data);
-        setPosts(response.data);
-        setServerConnected(true);
+      // 🔧 CORRECCIÓN: Asegurar que siempre tengamos un array
+      let postsData = [];
+      
+      if (response && Array.isArray(response)) {
+        postsData = response;
+      } else if (response && response.data && Array.isArray(response.data)) {
+        postsData = response.data;
+      } else if (response && Array.isArray(response.posts)) {
+        postsData = response.posts;
       } else {
-        console.warn('⚠️ Respuesta sin éxito:', response);
-        throw new Error(response.message || 'Error desconocido');
+        console.warn('⚠️ Respuesta del servicio no es un array válido:', response);
+        postsData = [];
       }
+      
+      console.log('✅ Recarga completada, total de publicaciones:', postsData.length);
+      setPosts(postsData);
+      setServerConnected(true);
     } catch (error) {
-      console.error('❌ Error cargando publicaciones:', error);
+      console.error('❌ Error recargando publicaciones:', error);
       setServerConnected(false);
       
       // Usar datos de demostración como fallback
       console.log('📡 Usando datos de demostración...');
-      setPosts(getDemoData());
+      const demoData = getDemoData();
+      setPosts(demoData);
+      showNotification('⚠️ Error de conexión - Mostrando datos de demostración', 'warning');
     } finally {
       setLoading(false);
     }
-  }, [projectId, getDemoData, filters]);
+  }, [projectId, getDemoData, showNotification]);
 
-  // Cargar datos al montar el componente
+  // 🆕 NUEVO: Efecto separado para recargar cuando cambien los filtros
   useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+    if (projectId && filters) {
+      const filterLoad = async () => {
+        try {
+          setLoading(true);
+          console.log('🔄 Aplicando filtros:', filters);
+          
+          const response = await socialPostService.getProjectPosts(projectId, filters);
+          
+          // Asegurar que siempre tengamos un array
+          let postsData = [];
+          
+          if (response && Array.isArray(response)) {
+            postsData = response;
+          } else if (response && response.data && Array.isArray(response.data)) {
+            postsData = response.data;
+          } else if (response && Array.isArray(response.posts)) {
+            postsData = response.posts;
+          } else {
+            // Aplicar filtros localmente si el servicio no responde
+            const currentPosts = Array.isArray(posts) ? posts : getDemoData();
+            postsData = currentPosts; // En este caso, la función getFilteredPosts manejará el filtrado
+          }
+          
+          console.log('✅ Filtros aplicados:', postsData);
+          setPosts(postsData);
+          setServerConnected(true);
+        } catch (error) {
+          console.error('❌ Error aplicando filtros:', error);
+          // No cambiar el estado de loading ni posts si solo falló el filtrado
+          console.log('📡 Aplicando filtros localmente...');
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      // Solo ejecutar si hay filtros activos, si no mantener los datos actuales
+      if (filters.platform || filters.status || filters.search || filters.dateFrom || filters.dateTo) {
+        filterLoad();
+      }
+    }
+  }, [filters, projectId]); // Este efecto se ejecuta cuando cambian los filtros
+
+  // Cargar datos al montar el componente (solo la primera vez)
+  useEffect(() => {
+    if (projectId) {
+      // Llamar loadPosts directamente
+      loadPosts();
+    }
+  }, [projectId, loadPosts]); // Cuando cambie el projectId o loadPosts
+
+  // 🆕 NUEVO: Debounce para la búsqueda - evita que se pierda el foco
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // Solo actualizar el filtro de búsqueda si el valor cambió
+      if (searchInput !== filters.search) {
+        setFilters(prev => ({ ...prev, search: searchInput }));
+      }
+    }, 500); // Esperar 500ms después de que el usuario deje de escribir
+
+    return () => clearTimeout(timeoutId);
+  }, [searchInput, filters.search]);
 
   // Cerrar menu de acciones al hacer click fuera
   useEffect(() => {
@@ -153,6 +214,12 @@ const ProjectSocial = ({ projectId, project }) => {
 
   // Filtrar publicaciones localmente (para modo offline)
   const getFilteredPosts = () => {
+    // 🔧 CORRECCIÓN: Asegurar que posts siempre sea un array
+    if (!Array.isArray(posts)) {
+      console.warn('⚠️ posts no es un array:', posts);
+      return [];
+    }
+
     let filtered = [...posts];
 
     if (filters.platform) {
@@ -166,8 +233,8 @@ const ProjectSocial = ({ projectId, project }) => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter(post => 
-        post.content.toLowerCase().includes(searchLower) ||
-        post.hashtags.some(tag => tag.toLowerCase().includes(searchLower)) ||
+        post.content?.toLowerCase().includes(searchLower) ||
+        (post.hashtags && Array.isArray(post.hashtags) && post.hashtags.some(tag => tag.toLowerCase().includes(searchLower))) ||
         post.notes?.toLowerCase().includes(searchLower)
       );
     }
@@ -185,11 +252,6 @@ const ProjectSocial = ({ projectId, project }) => {
     }
 
     return filtered;
-  };
-
-  // Función para obtener badge de estado
-  const getStatusBadge = (status) => {
-    return socialPostUtils.getStatusBadge(status);
   };
 
   // Resetear formulario
@@ -216,7 +278,7 @@ const ProjectSocial = ({ projectId, project }) => {
       content: post.content,
       scheduledDate: scheduledDate.toISOString().split('T')[0],
       scheduledTime: scheduledDate.toTimeString().slice(0, 5),
-      hashtags: (post.hashtags || []).join(' '),
+      hashtags: (post.hashtags && Array.isArray(post.hashtags) ? post.hashtags.join(' ') : ''),
       notes: post.notes || ''
     });
     
@@ -235,7 +297,8 @@ const ProjectSocial = ({ projectId, project }) => {
       // Validar contenido
       const validation = socialPostUtils.validateContent(formData.content, formData.platform);
       if (!validation.valid) {
-        alert(validation.error);
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification(validation.error, 'error');
         return;
       }
       
@@ -246,7 +309,8 @@ const ProjectSocial = ({ projectId, project }) => {
         
         // Validar que la fecha no sea en el pasado
         if (scheduledDateTime < new Date()) {
-          alert('No puedes programar una publicación en el pasado');
+          // 🔄 CAMBIO: De alert() a showNotification()
+          showNotification('No puedes programar una publicación en el pasado', 'error');
           return;
         }
       }
@@ -265,15 +329,13 @@ const ProjectSocial = ({ projectId, project }) => {
 
       if (serverConnected) {
         // Intentar crear en el servidor
-        const response = await socialPostService.createPost(postData);
+        await socialPostService.createPost(postData);
         
-        if (response.success) {
-          console.log('✅ Publicación creada en servidor:', response.data);
-          await loadPosts(); // Recargar desde servidor
-          alert('¡Publicación creada exitosamente!');
-        } else {
-          throw new Error(response.message || 'Error desconocido');
-        }
+        // El servicio ya retorna los datos directamente
+        console.log('✅ Publicación creada en servidor');
+        await loadPosts(); // Recargar desde servidor
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification('¡Publicación creada exitosamente!', 'success');
       } else {
         // Modo offline: crear localmente
         const localPost = {
@@ -287,8 +349,13 @@ const ProjectSocial = ({ projectId, project }) => {
           createdAt: new Date().toISOString()
         };
         
-        setPosts(prevPosts => [localPost, ...prevPosts]);
-        alert('📱 Publicación guardada localmente (sin conexión al servidor)');
+        setPosts(prevPosts => {
+          // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+          const currentPosts = Array.isArray(prevPosts) ? prevPosts : [];
+          return [localPost, ...currentPosts];
+        });
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification('📱 Publicación guardada localmente (sin conexión al servidor)', 'warning');
       }
       
       resetForm();
@@ -318,11 +385,16 @@ const ProjectSocial = ({ projectId, project }) => {
         createdAt: new Date().toISOString()
       };
       
-      setPosts(prevPosts => [localPost, ...prevPosts]);
+      setPosts(prevPosts => {
+        // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+        const currentPosts = Array.isArray(prevPosts) ? prevPosts : [];
+        return [localPost, ...currentPosts];
+      });
       setShowCreatePost(false);
       setServerConnected(false);
       
-      alert('⚠️ Error de conexión. Publicación guardada localmente.');
+      // 🔄 CAMBIO: De alert() a showNotification()
+      showNotification('⚠️ Error de conexión. Publicación guardada localmente.', 'warning');
     }
   };
 
@@ -336,7 +408,8 @@ const ProjectSocial = ({ projectId, project }) => {
       // Validar contenido
       const validation = socialPostUtils.validateContent(formData.content, formData.platform);
       if (!validation.valid) {
-        alert(validation.error);
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification(validation.error, 'error');
         return;
       }
       
@@ -347,7 +420,8 @@ const ProjectSocial = ({ projectId, project }) => {
         
         // Para posts no publicados, validar fecha futura
         if (editingPost.status !== 'published' && scheduledDateTime < new Date()) {
-          alert('No puedes programar una publicación en el pasado');
+          // 🔄 CAMBIO: De alert() a showNotification()
+          showNotification('No puedes programar una publicación en el pasado', 'error');
           return;
         }
       }
@@ -364,20 +438,29 @@ const ProjectSocial = ({ projectId, project }) => {
       };
 
       if (serverConnected && !editingPost._id.startsWith('local-')) {
-        // Intentar actualizar en el servidor
-        const response = await socialPostService.updatePost(editingPost._id, updateData);
+        await socialPostService.updatePost(editingPost._id, updateData);
         
-        if (response.success) {
-          console.log('✅ Publicación actualizada en servidor:', response.data);
-          await loadPosts(); // Recargar desde servidor
-          alert('¡Publicación actualizada exitosamente!');
-        } else {
-          throw new Error(response.message || 'Error desconocido');
-        }
+        // El servicio ya retorna los datos directamente
+        await loadPosts();
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification('✅ Publicación actualizada correctamente', 'success');
       } else {
-        // Modo offline o post local: actualizar localmente
-        setPosts(prevPosts => 
-          prevPosts.map(post => 
+        // Actualizar localmente
+        setPosts(prevPosts => {
+          // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+          if (!Array.isArray(prevPosts)) {
+            console.warn('⚠️ prevPosts no es un array, reinicializando');
+            return [{
+              ...updateData,
+              _id: editingPost._id,
+              status: formData.scheduledDate ? 
+                (editingPost.status === 'published' ? 'published' : 'scheduled') : 
+                'draft',
+              updatedAt: new Date().toISOString()
+            }];
+          }
+          
+          return prevPosts.map(post => 
             post._id === editingPost._id 
               ? {
                   ...post,
@@ -388,20 +471,27 @@ const ProjectSocial = ({ projectId, project }) => {
                   updatedAt: new Date().toISOString()
                 }
               : post
-          )
-        );
-        alert('📱 Publicación actualizada localmente');
+          );
+        });
+        
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification('📝 Publicación actualizada localmente', 'warning');
       }
       
-      resetForm();
       setShowEditPost(false);
       
     } catch (error) {
       console.error('❌ Error actualizando publicación:', error);
       
       // Fallback: actualizar localmente
-      setPosts(prevPosts => 
-        prevPosts.map(post => 
+      setPosts(prevPosts => {
+        // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+        if (!Array.isArray(prevPosts)) {
+          console.warn('⚠️ prevPosts no es un array en catch updatePost');
+          return [];
+        }
+        
+        return prevPosts.map(post => 
           post._id === editingPost._id 
             ? {
                 ...post,
@@ -421,13 +511,14 @@ const ProjectSocial = ({ projectId, project }) => {
                 updatedAt: new Date().toISOString()
               }
             : post
-        )
-      );
+        );
+      });
       
       setShowEditPost(false);
       setServerConnected(false);
       
-      alert('⚠️ Error de conexión. Publicación actualizada localmente.');
+      // 🔄 CAMBIO: De alert() a showNotification()
+      showNotification('⚠️ Error de conexión. Publicación actualizada localmente.', 'warning');
     }
   };
 
@@ -441,26 +532,36 @@ const ProjectSocial = ({ projectId, project }) => {
 
     try {
       if (serverConnected && !postId.startsWith('local-')) {
-        const response = await socialPostService.deletePost(postId);
+        await socialPostService.deletePost(postId);
         
-        if (response.success) {
-          await loadPosts(); // Recargar desde servidor
-          alert('Publicación eliminada correctamente');
-          return;
-        }
+        // El servicio ya retorna los datos directamente
+        await loadPosts();
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification('🗑️ Publicación eliminada correctamente', 'success');
+        return;
       }
       
-      // Eliminar localmente (para posts locales o modo offline)
-      setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
-      alert('Publicación eliminada localmente');
+      // Eliminar localmente
+      setPosts(prevPosts => {
+        // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+        const currentPosts = Array.isArray(prevPosts) ? prevPosts : [];
+        return currentPosts.filter(post => post._id !== postId);
+      });
+      // 🔄 CAMBIO: De alert() a showNotification()
+      showNotification('🗑️ Publicación eliminada localmente', 'warning');
       
     } catch (error) {
       console.error('❌ Error eliminando publicación:', error);
       
       // Fallback: eliminar localmente
-      setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
+      setPosts(prevPosts => {
+        // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+        const currentPosts = Array.isArray(prevPosts) ? prevPosts : [];
+        return currentPosts.filter(post => post._id !== postId);
+      });
       setServerConnected(false);
-      alert('⚠️ Error de conexión. Publicación eliminada localmente.');
+      // 🔄 CAMBIO: De alert() a showNotification()
+      showNotification('⚠️ Error de conexión. Publicación eliminada localmente.', 'warning');
     }
     
     setShowActionsFor(null);
@@ -480,13 +581,18 @@ const ProjectSocial = ({ projectId, project }) => {
         name: user?.name || 'Usuario Local', 
         email: user?.email || 'local@planifica.com' 
       },
-      hashtags: [...(post.hashtags || [])],
+      hashtags: Array.isArray(post.hashtags) ? [...post.hashtags] : [],
       notes: `Duplicado de: ${post.notes || 'Sin notas'}`,
       createdAt: new Date().toISOString()
     };
     
-    setPosts(prevPosts => [duplicatedPost, ...prevPosts]);
-    alert('📋 Publicación duplicada como borrador');
+    setPosts(prevPosts => {
+      // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+      const currentPosts = Array.isArray(prevPosts) ? prevPosts : [];
+      return [duplicatedPost, ...currentPosts];
+    });
+    // 🔄 CAMBIO: De alert() a showNotification()
+    showNotification('📋 Publicación duplicada como borrador', 'success');
     setShowActionsFor(null);
   };
 
@@ -496,452 +602,359 @@ const ProjectSocial = ({ projectId, project }) => {
     
     try {
       if (serverConnected && !postId.startsWith('local-')) {
-        const response = await socialPostService.updatePostStatus(postId, newStatus);
+        await socialPostService.updatePostStatus(postId, newStatus);
         
-        if (response.success) {
-          await loadPosts();
-          alert(`Estado cambiado a: ${socialPostUtils.getStatusBadge(newStatus).text}`);
-          return;
-        }
+        // El servicio ya retorna los datos directamente
+        await loadPosts();
+        // 🔄 CAMBIO: De alert() a showNotification()
+        showNotification(`✅ Estado cambiado a: ${socialPostUtils.getStatusBadge(newStatus).text}`, 'success');
+        return;
       }
       
       // Cambiar estado localmente
-      setPosts(prevPosts => 
-        prevPosts.map(post => 
+      setPosts(prevPosts => {
+        // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+        if (!Array.isArray(prevPosts)) {
+          console.warn('⚠️ prevPosts no es un array en changeStatus');
+          return [];
+        }
+        
+        return prevPosts.map(post => 
           post._id === postId 
             ? { ...post, status: newStatus }
             : post
-        )
-      );
-      alert(`Estado cambiado localmente a: ${socialPostUtils.getStatusBadge(newStatus).text}`);
+        );
+      });
+      
+      const statusMessages = {
+        'draft': '📝 Marcado como borrador',
+        'scheduled': '⏰ Marcado como programado', 
+        'published': '✅ Marcado como publicado'
+      };
+      
+      // 🔄 CAMBIO: De alert() a showNotification()
+      showNotification(statusMessages[newStatus] || `Estado cambiado a: ${newStatus}`, 'success');
       
     } catch (error) {
       console.error('❌ Error cambiando estado:', error);
       
       // Fallback: cambiar localmente
-      setPosts(prevPosts => 
-        prevPosts.map(post => 
+      setPosts(prevPosts => {
+        // 🔧 CORRECCIÓN: Asegurar que prevPosts sea un array
+        if (!Array.isArray(prevPosts)) {
+          console.warn('⚠️ prevPosts no es un array en catch changeStatus');
+          return [];
+        }
+        
+        return prevPosts.map(post => 
           post._id === postId 
             ? { ...post, status: newStatus }
             : post
-        )
-      );
+        );
+      });
+      
       setServerConnected(false);
-      alert('⚠️ Error de conexión. Estado cambiado localmente.');
+      // 🔄 CAMBIO: De alert() a showNotification()
+      showNotification('⚠️ Sin conexión - Estado cambiado localmente', 'warning');
     }
     
     setShowActionsFor(null);
   };
 
-  // Sugerir hashtags automáticamente
-  const handleContentChange = (content) => {
-    setFormData(prev => ({ ...prev, content }));
-    
-    // Auto-sugerir hashtags si el contenido es suficientemente largo
-    if (content.length > 50 && !formData.hashtags) {
-      const suggestions = socialPostUtils.suggestHashtags(content, project);
-      if (suggestions.length > 0) {
-        setFormData(prev => ({ ...prev, hashtags: suggestions.join(' ') }));
-      }
-    }
-  };
-
-  // Limpiar filtros
-  const clearFilters = () => {
-    setFilters({
-      platform: '',
-      status: '',
-      search: '',
-      dateFrom: '',
-      dateTo: ''
-    });
-  };
-
-  // Aplicar filtros
-  const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  };
-
-  // Toggle acciones de un post
+  // Toggle menú de acciones
   const toggleActions = (e, postId) => {
     e.stopPropagation();
     setShowActionsFor(showActionsFor === postId ? null : postId);
   };
 
-  // Renderizar vista según el modo seleccionado
+  // Renderizar contenido según el modo de vista
   const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Cargando...</span>
+          </div>
+          <p className="mt-3 text-muted">Cargando publicaciones...</p>
+        </div>
+      );
+    }
+
     if (viewMode === 'calendar') {
       return <SocialCalendar projectId={projectId} project={project} />;
     }
 
+    // Vista de lista
     const filteredPosts = getFilteredPosts();
 
-    // Vista de lista (tu diseño original mejorado)
     return (
-      <div className="row">
-        <div className="col-md-8">
-          <div className="card">
+      <div className="list-view">
+        {/* Panel de filtros */}
+        {showFilters && (
+          <div className="card mb-4">
             <div className="card-header d-flex justify-content-between align-items-center">
               <h6 className="mb-0">
-                Publicaciones Programadas
-                {filteredPosts.length !== posts.length && (
-                  <span className="badge bg-primary ms-2">
-                    {filteredPosts.length} de {posts.length}
-                  </span>
-                )}
+                <i className="bi bi-funnel me-2"></i>
+                Filtros
               </h6>
-              <div className="d-flex align-items-center">
-                <span className={`badge ${serverConnected ? 'bg-success' : 'bg-warning text-dark'} me-2`}>
-                  <i className={`bi bi-${serverConnected ? 'wifi' : 'wifi-off'} me-1`}></i>
-                  {serverConnected ? 'En línea' : 'Sin conexión'}
+              {(filters.platform || filters.status || filters.search) && (
+                <span className="badge bg-primary">
+                  {getFilteredPosts().length} de {Array.isArray(posts) ? posts.length : 0} publicaciones
                 </span>
-                <button 
-                  className={`btn btn-sm ${showFilters ? 'btn-primary' : 'btn-outline-primary'} me-2`}
-                  onClick={() => setShowFilters(!showFilters)}
-                  title="Filtros"
-                >
-                  <i className="bi bi-funnel"></i>
-                </button>
-                <button 
-                  className="btn btn-sm btn-outline-primary"
-                  onClick={loadPosts}
-                  disabled={loading}
-                  title="Recargar publicaciones"
-                >
-                  <i className={`bi bi-arrow-clockwise ${loading ? 'spin' : ''}`}></i>
-                </button>
+              )}
+            </div>
+            <div className="card-body">
+              <div className="row g-3">
+                <div className="col-md-3">
+                  <label className="form-label">Plataforma</label>
+                  <select 
+                    className="form-select"
+                    value={filters.platform}
+                    onChange={(e) => setFilters(prev => ({ ...prev, platform: e.target.value }))}
+                  >
+                    <option value="">Todas</option>
+                    {platforms.map(platform => (
+                      <option key={platform.id} value={platform.id}>
+                        {platform.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="col-md-3">
+                  <label className="form-label">Estado</label>
+                  <select 
+                    className="form-select"
+                    value={filters.status}
+                    onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                  >
+                    <option value="">Todos</option>
+                    <option value="draft">Borrador</option>
+                    <option value="scheduled">Programado</option>
+                    <option value="published">Publicado</option>
+                  </select>
+                </div>
+                
+                <div className="col-md-6">
+                  <label className="form-label">Buscar</label>
+                  <div className="input-group">
+                    <input 
+                      type="text"
+                      className="form-control"
+                      placeholder="Buscar en contenido, hashtags, notas..."
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                    />
+                    {searchInput && (
+                      <button 
+                        className="btn btn-outline-secondary"
+                        type="button"
+                        onClick={() => setSearchInput('')}
+                        title="Limpiar búsqueda"
+                      >
+                        <i className="bi bi-x"></i>
+                      </button>
+                    )}
+                  </div>
+                  {searchInput && searchInput !== filters.search && (
+                    <small className="form-text text-muted">
+                      <i className="bi bi-clock me-1"></i>
+                      Buscando: "{searchInput}"...
+                    </small>
+                  )}
+                  {filters.search && (
+                    <small className="form-text text-success">
+                      <i className="bi bi-check-circle me-1"></i>
+                      Filtro activo: "{filters.search}"
+                    </small>
+                  )}
+                </div>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Panel de filtros */}
-            {showFilters && (
-              <div className="card-body border-bottom bg-light">
-                <div className="row g-3">
-                  <div className="col-md-3">
-                    <label className="form-label small">Buscar</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      placeholder="Buscar en contenido..."
-                      value={filters.search}
-                      onChange={(e) => handleFilterChange('search', e.target.value)}
-                    />
+        {/* Lista de publicaciones */}
+        {filteredPosts.length === 0 ? (
+          <div className="text-center py-5">
+            <i className="bi bi-calendar2-x text-muted" style={{ fontSize: '3rem' }}></i>
+            <h6 className="mt-3 text-muted">
+              {searchInput && searchInput !== filters.search ? 'Buscando...' : 'No hay publicaciones'}
+            </h6>
+            <p className="text-muted mb-3">
+              {searchInput && searchInput !== filters.search 
+                ? `Buscando "${searchInput}"...`
+                : filters.platform || filters.status || filters.search 
+                ? 'No se encontraron publicaciones con los filtros aplicados'
+                : 'Comienza creando tu primera publicación social'
+              }
+            </p>
+            {(filters.platform || filters.status || filters.search) && (
+              <button 
+                className="btn btn-outline-secondary me-2 mb-3"
+                onClick={() => {
+                  setFilters({
+                    platform: '',
+                    status: '',
+                    search: '',
+                    dateFrom: '',
+                    dateTo: ''
+                  });
+                  setSearchInput(''); // 🆕 NUEVO: También resetear el input de búsqueda
+                }}
+              >
+                <i className="bi bi-x-circle me-1"></i>
+                Limpiar filtros
+              </button>
+            )}
+            <button 
+              className="btn btn-primary"
+              onClick={() => {
+                resetForm();
+                setShowCreatePost(true);
+              }}
+            >
+              <i className="bi bi-plus-lg me-2"></i>
+              Crear primera publicación
+            </button>
+          </div>
+        ) : (
+          <div className="row">
+            {filteredPosts && Array.isArray(filteredPosts) && filteredPosts.map(post => (
+              <div key={post._id} className="col-xl-4 col-lg-6 mb-4">
+                <div className="card h-100 shadow-sm">
+                  <div className="card-body">
+                    <div className="d-flex justify-content-between align-items-start mb-3">
+                      <div className="d-flex align-items-center">
+                        <i className={`bi ${socialPostUtils.getPlatformConfig(post.platform).icon} text-${socialPostUtils.getPlatformConfig(post.platform).color} me-2`}></i>
+                        <span className={`badge bg-${socialPostUtils.getPlatformConfig(post.platform).color}`}>
+                          {socialPostUtils.getPlatformConfig(post.platform).name}
+                        </span>
+                      </div>
+                      
+                      <div className="position-relative">
+                        <button 
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={(e) => toggleActions(e, post._id)}
+                        >
+                          <i className="bi bi-three-dots"></i>
+                        </button>
+                        
+                        {showActionsFor === post._id && (
+                          <div 
+                            className="position-absolute end-0 mt-1 bg-white border rounded shadow-lg p-2"
+                            style={{ zIndex: 1000, minWidth: '200px' }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button 
+                              className="btn btn-sm btn-light w-100 text-start mb-1"
+                              onClick={() => handleEditPost(post)}
+                            >
+                              <i className="bi bi-pencil me-2"></i>Editar
+                            </button>
+                            
+                            <button 
+                              className="btn btn-sm btn-light w-100 text-start mb-1"
+                              onClick={() => handleDuplicatePost(post)}
+                            >
+                              <i className="bi bi-files me-2"></i>Duplicar
+                            </button>
+                            
+                            <div className="dropdown-divider"></div>
+                            
+                            <button 
+                              className="btn btn-sm btn-light w-100 text-start mb-1"
+                              onClick={() => handleChangeStatus(post._id, 'draft')}
+                              disabled={post.status === 'draft'}
+                            >
+                              <i className="bi bi-pencil-square me-2"></i>Marcar como borrador
+                            </button>
+                            
+                            <button 
+                              className="btn btn-sm btn-light w-100 text-start mb-1"
+                              onClick={() => handleChangeStatus(post._id, 'scheduled')}
+                              disabled={post.status === 'scheduled'}
+                            >
+                              <i className="bi bi-clock me-2"></i>Marcar como programado
+                            </button>
+                            
+                            <button 
+                              className="btn btn-sm btn-light w-100 text-start mb-1"
+                              onClick={() => handleChangeStatus(post._id, 'published')}
+                              disabled={post.status === 'published'}
+                            >
+                              <i className="bi bi-check-circle me-2"></i>Marcar como publicado
+                            </button>
+                            
+                            <div className="dropdown-divider"></div>
+                            
+                            <button 
+                              className="btn btn-sm btn-outline-danger w-100 text-start"
+                              onClick={() => handleDeletePost(post._id)}
+                            >
+                              <i className="bi bi-trash me-2"></i>Eliminar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <p className="card-text">{post.content}</p>
+                    
+                    {post.hashtags && Array.isArray(post.hashtags) && post.hashtags.length > 0 && (
+                      <div className="mb-3">
+                        {post.hashtags.map((tag, index) => (
+                          <span key={index} className="badge bg-light text-dark me-1 mb-1">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <div className="d-flex justify-content-between align-items-center">
+                      <small className="text-muted">
+                        <i className="bi bi-calendar me-1"></i>
+                        {socialPostUtils.formatScheduledDate(post.scheduledDate)}
+                      </small>
+                      
+                      <span className={`badge ${socialPostUtils.getStatusBadge(post.status).class}`}>
+                        {socialPostUtils.getStatusBadge(post.status).text}
+                      </span>
+                    </div>
+                    
+                    {post.notes && (
+                      <div className="mt-2">
+                        <small className="text-muted">
+                          <i className="bi bi-sticky me-1"></i>
+                          {post.notes}
+                        </small>
+                      </div>
+                    )}
                   </div>
-                  <div className="col-md-2">
-                    <label className="form-label small">Plataforma</label>
-                    <select
-                      className="form-select form-select-sm"
-                      value={filters.platform}
-                      onChange={(e) => handleFilterChange('platform', e.target.value)}
-                    >
-                      <option value="">Todas</option>
-                      {platforms.map(platform => (
-                        <option key={platform.id} value={platform.id}>
-                          {platform.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-md-2">
-                    <label className="form-label small">Estado</label>
-                    <select
-                      className="form-select form-select-sm"
-                      value={filters.status}
-                      onChange={(e) => handleFilterChange('status', e.target.value)}
-                    >
-                      <option value="">Todos</option>
-                      <option value="draft">Borrador</option>
-                      <option value="scheduled">Programado</option>
-                      <option value="published">Publicado</option>
-                      <option value="failed">Fallido</option>
-                    </select>
-                  </div>
-                  <div className="col-md-2">
-                    <label className="form-label small">Desde</label>
-                    <input
-                      type="date"
-                      className="form-control form-control-sm"
-                      value={filters.dateFrom}
-                      onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                    />
-                  </div>
-                  <div className="col-md-2">
-                    <label className="form-label small">Hasta</label>
-                    <input
-                      type="date"
-                      className="form-control form-control-sm"
-                      value={filters.dateTo}
-                      onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                    />
-                  </div>
-                  <div className="col-md-1 d-flex align-items-end">
-                    <button
-                      className="btn btn-sm btn-outline-secondary"
-                      onClick={clearFilters}
-                      title="Limpiar filtros"
-                    >
-                      <i className="bi bi-x-lg"></i>
-                    </button>
-                  </div>
+                </div>
+              </div>
+            )) || (
+              <div className="col-12">
+                <div className="alert alert-warning">
+                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  Error cargando publicaciones. Intenta recargar la página.
                 </div>
               </div>
             )}
-
-            <div className="card-body">
-              {loading ? (
-                <div className="text-center py-4">
-                  <div className="spinner-border text-primary" role="status">
-                    <span className="visually-hidden">Cargando...</span>
-                  </div>
-                  <p className="mt-2 text-muted">Cargando publicaciones...</p>
-                </div>
-              ) : filteredPosts.length === 0 ? (
-                <div className="text-center py-5">
-                  <i className="bi bi-calendar-x display-1 text-muted"></i>
-                  <h5 className="mt-3 text-muted">
-                    {posts.length === 0 ? 'No hay publicaciones' : 'No hay publicaciones que coincidan'}
-                  </h5>
-                  <p className="text-muted">
-                    {posts.length === 0 
-                      ? 'Crea tu primera publicación para comenzar'
-                      : 'Intenta ajustar los filtros de búsqueda'
-                    }
-                  </p>
-                  {posts.length === 0 && (
-                    <button 
-                      className="btn btn-primary"
-                      onClick={() => setShowCreatePost(true)}
-                    >
-                      <i className="bi bi-plus-lg me-1"></i>
-                      Nueva Publicación
-                    </button>
-                  )}
-                </div>
-              ) : (
-                filteredPosts.map(post => {
-                  const platform = platforms.find(p => p.id === post.platform);
-                  const statusBadge = getStatusBadge(post.status);
-                  const isLocal = post._id.startsWith('local-');
-                  const showActions = showActionsFor === post._id;
-                  
-                  return (
-                    <div key={post._id} className="border rounded p-3 mb-3 hover-card position-relative">
-                      {isLocal && (
-                        <div className="position-absolute top-0 end-0 mt-2 me-2">
-                          <span className="badge bg-info" title="Guardado localmente">
-                            <i className="bi bi-cloud-slash"></i>
-                          </span>
-                        </div>
-                      )}
-                      
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <div className="d-flex align-items-center">
-                          <i className={`bi ${platform?.icon || 'bi-share'} text-${platform?.color || 'secondary'} me-2`}></i>
-                          <div>
-                            <strong>{platform?.name || post.platform}</strong>
-                            {post.author && (
-                              <div>
-                                <small className="text-muted">por {post.author.name}</small>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <span className={`badge ${statusBadge.class}`}>
-                          {statusBadge.text}
-                        </span>
-                      </div>
-                      
-                      <p className="mb-2">{post.content}</p>
-                      
-                      {post.hashtags && post.hashtags.length > 0 && (
-                        <div className="mb-2">
-                          {post.hashtags.map((tag, index) => (
-                            <span key={index} className="badge bg-light text-dark me-1 border">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      
-                      <div className="d-flex justify-content-between align-items-center">
-                        <small className="text-muted">
-                          <i className="bi bi-calendar me-1"></i>
-                          {socialPostUtils.formatScheduledDate(post.scheduledDate)}
-                        </small>
-                        
-                        {/* Menú de acciones sin Bootstrap dropdown */}
-                        <div className="position-relative">
-                          <button 
-                            className="btn btn-sm btn-outline-secondary"
-                            onClick={(e) => toggleActions(e, post._id)}
-                            title="Acciones"
-                          >
-                            <i className="bi bi-three-dots"></i>
-                          </button>
-                          
-                          {/* Menu de acciones personalizado */}
-                          {showActions && (
-                            <div 
-                              className="position-absolute end-0 mt-1 bg-white border rounded shadow-lg p-2"
-                              style={{ zIndex: 1000, minWidth: '200px' }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button 
-                                className="btn btn-sm btn-light w-100 text-start mb-1"
-                                onClick={() => handleEditPost(post)}
-                              >
-                                <i className="bi bi-pencil me-2"></i>Editar
-                              </button>
-                              
-                              <button 
-                                className="btn btn-sm btn-light w-100 text-start mb-1"
-                                onClick={() => handleDuplicatePost(post)}
-                              >
-                                <i className="bi bi-files me-2"></i>Duplicar
-                              </button>
-                              
-                              {post.status !== 'published' && (
-                                <>
-                                  <hr className="my-1" />
-                                  <button 
-                                    className="btn btn-sm btn-light w-100 text-start mb-1"
-                                    onClick={() => handleChangeStatus(post._id, 'published')}
-                                  >
-                                    <i className="bi bi-send me-2"></i>Publicar ahora
-                                  </button>
-                                  
-                                  {post.status !== 'scheduled' && (
-                                    <button 
-                                      className="btn btn-sm btn-light w-100 text-start mb-1"
-                                      onClick={() => handleChangeStatus(post._id, 'scheduled')}
-                                    >
-                                      <i className="bi bi-clock me-2"></i>Programar
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                              
-                              <hr className="my-1" />
-                              <button 
-                                className="btn btn-sm btn-light w-100 text-start text-danger"
-                                onClick={() => handleDeletePost(post._id)}
-                              >
-                                <i className="bi bi-trash me-2"></i>Eliminar
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {post.notes && (
-                        <div className="mt-2 pt-2 border-top">
-                          <small className="text-muted">
-                            <i className="bi bi-sticky me-1"></i>
-                            {post.notes}
-                          </small>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
           </div>
-        </div>
+        )}
 
-        <div className="col-md-4">
-          {/* Estadísticas */}
-          <div className="card">
-            <div className="card-header">
-              <h6 className="mb-0">Estadísticas</h6>
-            </div>
-            <div className="card-body">
-              <div className="text-center mb-3">
-                <h4 className="text-primary">{posts.length}</h4>
-                <small className="text-muted">Total publicaciones</small>
-              </div>
-              <div className="row text-center">
-                <div className="col-6 mb-3">
-                  <div className="text-success fw-bold">
-                    {posts.filter(p => p.status === 'published').length}
-                  </div>
-                  <small className="text-muted">Publicadas</small>
-                </div>
-                <div className="col-6 mb-3">
-                  <div className="text-warning fw-bold">
-                    {posts.filter(p => p.status === 'scheduled').length}
-                  </div>
-                  <small className="text-muted">Programadas</small>
-                </div>
-                <div className="col-6">
-                  <div className="text-secondary fw-bold">
-                    {posts.filter(p => p.status === 'draft').length}
-                  </div>
-                  <small className="text-muted">Borradores</small>
-                </div>
-                <div className="col-6">
-                  <div className="text-info fw-bold">
-                    {posts.filter(p => p._id.startsWith('local-')).length}
-                  </div>
-                  <small className="text-muted">Locales</small>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Próximas Publicaciones */}
-          <div className="card mt-3">
-            <div className="card-header">
-              <h6 className="mb-0">Próximas Publicaciones</h6>
-            </div>
-            <div className="card-body">
-              {posts
-                .filter(p => p.status === 'scheduled')
-                .sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate))
-                .slice(0, 5)
-                .map(post => {
-                  const platform = platforms.find(p => p.id === post.platform);
-                  return (
-                    <div key={post._id} className="d-flex align-items-center mb-2">
-                      <i className={`bi ${platform?.icon || 'bi-share'} text-${platform?.color || 'secondary'} me-2`}></i>
-                      <div className="flex-grow-1">
-                        <div className="fw-medium" style={{ fontSize: '14px' }}>
-                          {platform?.name || post.platform}
-                        </div>
-                        <small className="text-muted">
-                          {socialPostUtils.formatScheduledDate(post.scheduledDate)}
-                        </small>
-                      </div>
-                      {post._id.startsWith('local-') && (
-                        <span className="badge bg-info ms-2" title="Local">
-                          <i className="bi bi-cloud-slash"></i>
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              
-              {posts.filter(p => p.status === 'scheduled').length === 0 && (
-                <div className="text-center text-muted py-3">
-                  <i className="bi bi-calendar-check"></i>
-                  <div>No hay publicaciones programadas</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Guía rápida */}
-          {!serverConnected && (
-            <div className="card mt-3 border-warning">
-              <div className="card-header bg-warning bg-opacity-10">
-                <h6 className="mb-0 text-warning">
-                  <i className="bi bi-exclamation-triangle me-2"></i>
-                  Modo Sin Conexión
-                </h6>
-              </div>
-              <div className="card-body">
-                <small className="text-muted">
-                  Las publicaciones se guardan localmente. Se sincronizarán cuando se restablezca la conexión.
+        {/* Mensaje de modo offline */}
+        {!serverConnected && (
+          <div className="alert alert-warning mt-4">
+            <div className="d-flex align-items-center">
+              <i className="bi bi-wifi-off me-3"></i>
+              <div>
+                <strong>Modo sin conexión</strong>
+                <br />
+                <small>
+                  Los cambios se están guardando localmente. 
+                  Se sincronizarán cuando se restablezca la conexión.
                 </small>
                 <button 
                   className="btn btn-sm btn-outline-primary mt-2 w-100"
@@ -952,8 +965,8 @@ const ProjectSocial = ({ projectId, project }) => {
                 </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -973,6 +986,20 @@ const ProjectSocial = ({ projectId, project }) => {
         </div>
         
         <div className="d-flex align-items-center">
+          {/* Botón de filtros (solo en vista lista) */}
+          {viewMode === 'list' && (
+            <button
+              className={`btn btn-sm ${showFilters ? 'btn-primary' : 'btn-outline-primary'} me-2`}
+              onClick={() => setShowFilters(!showFilters)}
+              title="Filtros"
+            >
+              <i className="bi bi-funnel"></i>
+              {(filters.platform || filters.status || filters.search) && (
+                <span className="badge bg-warning text-dark ms-1">!</span>
+              )}
+            </button>
+          )}
+          
           {/* Selector de vista */}
           <div className="btn-group me-3">
             <button
@@ -1020,18 +1047,15 @@ const ProjectSocial = ({ projectId, project }) => {
                 </h5>
                 <button 
                   type="button" 
-                  className="btn-close" 
-                  onClick={() => {
-                    resetForm();
-                    setShowCreatePost(false);
-                  }}
+                  className="btn-close"
+                  onClick={() => setShowCreatePost(false)}
                 ></button>
               </div>
               
               <form onSubmit={handleCreatePost}>
                 <div className="modal-body">
-                  <div className="row">
-                    <div className="col-md-6 mb-3">
+                  <div className="row g-3">
+                    <div className="col-md-6">
                       <label className="form-label">Plataforma</label>
                       <select 
                         className="form-select"
@@ -1046,21 +1070,20 @@ const ProjectSocial = ({ projectId, project }) => {
                         ))}
                       </select>
                     </div>
-
-                    <div className="col-md-3 mb-3">
+                    
+                    <div className="col-md-3">
                       <label className="form-label">Fecha</label>
-                      <input
+                      <input 
                         type="date"
                         className="form-control"
                         value={formData.scheduledDate}
                         onChange={(e) => setFormData(prev => ({ ...prev, scheduledDate: e.target.value }))}
-                        min={new Date().toISOString().split('T')[0]}
                       />
                     </div>
-
-                    <div className="col-md-3 mb-3">
+                    
+                    <div className="col-md-3">
                       <label className="form-label">Hora</label>
-                      <input
+                      <input 
                         type="time"
                         className="form-control"
                         value={formData.scheduledTime}
@@ -1069,84 +1092,55 @@ const ProjectSocial = ({ projectId, project }) => {
                     </div>
                   </div>
                   
-                  <div className="mb-3">
+                  <div className="mt-3">
                     <label className="form-label">Contenido</label>
-                    <textarea
+                    <textarea 
                       className="form-control"
                       rows="4"
+                      placeholder="Escribe el contenido de tu publicación..."
                       value={formData.content}
-                      onChange={(e) => handleContentChange(e.target.value)}
-                      placeholder="¿Qué quieres compartir?"
+                      onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
                       required
                     ></textarea>
-                    <div className={`form-text text-end ${
-                      socialPostUtils.getRemainingChars(formData.content, formData.platform) < 50 
-                        ? 'text-warning' 
-                        : socialPostUtils.getRemainingChars(formData.content, formData.platform) < 0 
-                          ? 'text-danger' 
-                          : ''
-                    }`}>
-                      {formData.content.length} / {socialPostUtils.getPlatformConfig(formData.platform).maxLength} caracteres
-                      ({socialPostUtils.getRemainingChars(formData.content, formData.platform)} restantes)
+                    <div className="form-text">
+                      {socialPostUtils.getRemainingChars(formData.content, formData.platform)} caracteres restantes
                     </div>
                   </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Hashtags (opcional)</label>
-                    <input
+                  
+                  <div className="mt-3">
+                    <label className="form-label">Hashtags</label>
+                    <input 
                       type="text"
                       className="form-control"
+                      placeholder="Ej: #marketing #redes #sociales"
                       value={formData.hashtags}
                       onChange={(e) => setFormData(prev => ({ ...prev, hashtags: e.target.value }))}
-                      placeholder="#hashtag1 #hashtag2 #hashtag3"
                     />
-                    <div className="form-text">Separa los hashtags con espacios. Se agregarán # automáticamente si no los incluyes.</div>
                   </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Notas internas (opcional)</label>
-                    <textarea
+                  
+                  <div className="mt-3">
+                    <label className="form-label">Notas (opcional)</label>
+                    <textarea 
                       className="form-control"
                       rows="2"
+                      placeholder="Notas internas sobre esta publicación..."
                       value={formData.notes}
                       onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Notas sobre esta publicación..."
                     ></textarea>
                   </div>
-
-                  {!formData.scheduledDate && (
-                    <div className="alert alert-info">
-                      <i className="bi bi-info-circle me-2"></i>
-                      Sin fecha programada, se guardará como <strong>borrador</strong>
-                    </div>
-                  )}
-
-                  {!serverConnected && (
-                    <div className="alert alert-warning">
-                      <i className="bi bi-wifi-off me-2"></i>
-                      <strong>Modo sin conexión:</strong> La publicación se guardará localmente y se sincronizará cuando se restablezca la conexión.
-                    </div>
-                  )}
                 </div>
                 
                 <div className="modal-footer">
                   <button 
                     type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => {
-                      resetForm();
-                      setShowCreatePost(false);
-                    }}
+                    className="btn btn-secondary"
+                    onClick={() => setShowCreatePost(false)}
                   >
                     Cancelar
                   </button>
-                  <button 
-                    type="submit" 
-                    className="btn btn-primary"
-                    disabled={socialPostUtils.getRemainingChars(formData.content, formData.platform) < 0}
-                  >
-                    <i className="bi bi-check-lg me-1"></i>
-                    {serverConnected ? 'Crear Publicación' : 'Guardar Localmente'}
+                  <button type="submit" className="btn btn-primary">
+                    <i className="bi bi-check me-1"></i>
+                    Crear Publicación
                   </button>
                 </div>
               </form>
@@ -1156,36 +1150,32 @@ const ProjectSocial = ({ projectId, project }) => {
       )}
 
       {/* Modal Editar Publicación */}
-      {showEditPost && editingPost && (
+      {showEditPost && (
         <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">
-                  <i className="bi bi-pencil-square me-2"></i>
+                  <i className="bi bi-pencil me-2"></i>
                   Editar Publicación
                 </h5>
                 <button 
                   type="button" 
-                  className="btn-close" 
-                  onClick={() => {
-                    resetForm();
-                    setShowEditPost(false);
-                  }}
+                  className="btn-close"
+                  onClick={() => setShowEditPost(false)}
                 ></button>
               </div>
               
               <form onSubmit={handleUpdatePost}>
                 <div className="modal-body">
-                  <div className="row">
-                    <div className="col-md-6 mb-3">
+                  <div className="row g-3">
+                    <div className="col-md-6">
                       <label className="form-label">Plataforma</label>
                       <select 
                         className="form-select"
                         value={formData.platform}
                         onChange={(e) => setFormData(prev => ({ ...prev, platform: e.target.value }))}
                         required
-                        disabled={editingPost.status === 'published'}
                       >
                         {platforms.map(platform => (
                           <option key={platform.id} value={platform.id}>
@@ -1194,108 +1184,77 @@ const ProjectSocial = ({ projectId, project }) => {
                         ))}
                       </select>
                     </div>
-
-                    <div className="col-md-3 mb-3">
+                    
+                    <div className="col-md-3">
                       <label className="form-label">Fecha</label>
-                      <input
+                      <input 
                         type="date"
                         className="form-control"
                         value={formData.scheduledDate}
                         onChange={(e) => setFormData(prev => ({ ...prev, scheduledDate: e.target.value }))}
-                        min={editingPost.status === 'published' ? undefined : new Date().toISOString().split('T')[0]}
-                        disabled={editingPost.status === 'published'}
                       />
                     </div>
-
-                    <div className="col-md-3 mb-3">
+                    
+                    <div className="col-md-3">
                       <label className="form-label">Hora</label>
-                      <input
+                      <input 
                         type="time"
                         className="form-control"
                         value={formData.scheduledTime}
                         onChange={(e) => setFormData(prev => ({ ...prev, scheduledTime: e.target.value }))}
-                        disabled={editingPost.status === 'published'}
                       />
                     </div>
                   </div>
                   
-                  <div className="mb-3">
+                  <div className="mt-3">
                     <label className="form-label">Contenido</label>
-                    <textarea
+                    <textarea 
                       className="form-control"
                       rows="4"
+                      placeholder="Escribe el contenido de tu publicación..."
                       value={formData.content}
                       onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
-                      placeholder="¿Qué quieres compartir?"
                       required
                     ></textarea>
-                    <div className={`form-text text-end ${
-                      socialPostUtils.getRemainingChars(formData.content, formData.platform) < 50 
-                        ? 'text-warning' 
-                        : socialPostUtils.getRemainingChars(formData.content, formData.platform) < 0 
-                          ? 'text-danger' 
-                          : ''
-                    }`}>
-                      {formData.content.length} / {socialPostUtils.getPlatformConfig(formData.platform).maxLength} caracteres
-                      ({socialPostUtils.getRemainingChars(formData.content, formData.platform)} restantes)
+                    <div className="form-text">
+                      {socialPostUtils.getRemainingChars(formData.content, formData.platform)} caracteres restantes
                     </div>
                   </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Hashtags (opcional)</label>
-                    <input
+                  
+                  <div className="mt-3">
+                    <label className="form-label">Hashtags</label>
+                    <input 
                       type="text"
                       className="form-control"
+                      placeholder="Ej: #marketing #redes #sociales"
                       value={formData.hashtags}
                       onChange={(e) => setFormData(prev => ({ ...prev, hashtags: e.target.value }))}
-                      placeholder="#hashtag1 #hashtag2 #hashtag3"
                     />
                   </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Notas internas (opcional)</label>
-                    <textarea
+                  
+                  <div className="mt-3">
+                    <label className="form-label">Notas (opcional)</label>
+                    <textarea 
                       className="form-control"
                       rows="2"
+                      placeholder="Notas internas sobre esta publicación..."
                       value={formData.notes}
                       onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Notas sobre esta publicación..."
                     ></textarea>
                   </div>
-
-                  {editingPost.status === 'published' && (
-                    <div className="alert alert-warning">
-                      <i className="bi bi-exclamation-triangle me-2"></i>
-                      <strong>Publicación ya publicada:</strong> Solo puedes editar el contenido y las notas. La fecha y plataforma no se pueden cambiar.
-                    </div>
-                  )}
-
-                  {!serverConnected && (
-                    <div className="alert alert-warning">
-                      <i className="bi bi-wifi-off me-2"></i>
-                      <strong>Modo sin conexión:</strong> Los cambios se guardarán localmente y se sincronizarán cuando se restablezca la conexión.
-                    </div>
-                  )}
                 </div>
                 
                 <div className="modal-footer">
                   <button 
                     type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => {
-                      resetForm();
-                      setShowEditPost(false);
-                    }}
+                    className="btn btn-secondary"
+                    onClick={() => setShowEditPost(false)}
                   >
                     Cancelar
                   </button>
-                  <button 
-                    type="submit" 
-                    className="btn btn-primary"
-                    disabled={socialPostUtils.getRemainingChars(formData.content, formData.platform) < 0}
-                  >
-                    <i className="bi bi-check-lg me-1"></i>
-                    {serverConnected ? 'Actualizar Publicación' : 'Guardar Localmente'}
+                  <button type="submit" className="btn btn-primary">
+                    <i className="bi bi-check me-1"></i>
+                    Actualizar Publicación
                   </button>
                 </div>
               </form>
@@ -1304,26 +1263,41 @@ const ProjectSocial = ({ projectId, project }) => {
         </div>
       )}
 
-      {/* Estilos adicionales */}
-      <style jsx>{`
-        .hover-card {
-          transition: all 0.2s ease;
-        }
-        .hover-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .modal.show {
-          backdrop-filter: blur(2px);
-        }
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      {/* 🆕 NUEVO: Sistema de notificaciones visuales */}
+      {notification && (
+        <div 
+          className={`position-fixed top-0 end-0 m-3`} 
+          style={{ zIndex: 9999 }}
+        >
+          <div 
+            className={`alert alert-${
+              notification.type === 'success' ? 'success' : 
+              notification.type === 'warning' ? 'warning' : 
+              notification.type === 'error' ? 'danger' : 'info'
+            } alert-dismissible shadow-lg border-0`}
+            style={{ 
+              minWidth: '320px', 
+              animation: 'slideInRight 0.3s ease-out',
+              opacity: '0.95',
+              backdropFilter: 'blur(10px)'
+            }}
+          >
+            <div className="d-flex align-items-center">
+              <i className={`bi ${
+                notification.type === 'success' ? 'bi-check-circle-fill' : 
+                notification.type === 'warning' ? 'bi-exclamation-triangle-fill' : 
+                notification.type === 'error' ? 'bi-x-circle-fill' : 'bi-info-circle-fill'
+              } me-2`}></i>
+              <span>{notification.message}</span>
+              <button
+                type="button"
+                className="btn-close ms-auto"
+                onClick={() => setNotification(null)}
+              ></button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
