@@ -29,8 +29,8 @@ const useSocket = () => {
       
       // Crear nueva conexión
       console.log('🌐 Creando socket con configuración simple...');
-      socketRef.current = io('http://localhost:3001', {
-        auth: { token },
+socketRef.current = io(process.env.REACT_APP_SOCKET_URL, {        
+  auth: { token },
         transports: ['polling'], // Solo HTTP polling
         timeout: 10000,
         forceNew: true

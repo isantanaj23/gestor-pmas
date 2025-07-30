@@ -1,8 +1,10 @@
+// client/src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-// Context de autenticación
+// Context de autenticación y sockets
 import { AuthProvider } from './context/AuthContext';
+import { SocketProvider } from './context/SocketContext'; // 🆕 NUEVO
 
 // Componentes de autenticación
 import Login from './components/auth/Login';
@@ -19,6 +21,9 @@ import ProjectDetailPage from './components/pages/ProjectDetailPage';
 import CRMPage from './components/pages/CRMPage';
 import ReportsPage from './components/pages/ReportsPage';
 
+// 🆕 Componente de notificaciones en tiempo real
+import SocketNotifications from './components/common/SocketNotifications';
+
 // Estilos
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -27,72 +32,64 @@ import './App.css';
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <div className="App">
-          <Routes>
-            {/* Rutas de Autenticación (públicas) */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+      <SocketProvider> {/* 🆕 NUEVO: Envolver toda la app con SocketProvider */}
+        <Router>
+          <div className="App">
+            {/* 🆕 Componente de notificaciones que se muestra en toda la app */}
+            <SocketNotifications />
             
-            {/* Rutas principales (protegidas) */}
-            <Route path="/" element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Dashboard />
-                </MainLayout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/proyectos" element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <ProjectsPage />
-                </MainLayout>
-              </ProtectedRoute>
-            } />
-            
-            {/* 🔥 CORREGIR: Cambiar de /proyecto/:projectId a /proyectos/:projectId */}
-            <Route path="/proyectos/:projectId" element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <ProjectDetailPage />
-                </MainLayout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/crm" element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <CRMPage />
-                </MainLayout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/reportes" element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <ReportsPage />
-                </MainLayout>
-              </ProtectedRoute>
-            } />
-            
-            {/* Rutas adicionales para roles específicos */}
-            <Route path="/admin" element={
-              <ProtectedRoute requiredRole={['admin', 'manager']}>
-                <MainLayout>
-                  <div className="container mt-4">
-                    <h1>Panel de Administración</h1>
-                    <p>Esta página solo es accesible para administradores y managers.</p>
-                  </div>
-                </MainLayout>
-              </ProtectedRoute>
-            } />
-            
-            {/* Redirección de rutas no encontradas */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
-      </Router>
+            <Routes>
+              {/* Rutas de Autenticación (públicas) */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              
+              {/* Rutas principales (protegidas) */}
+              <Route path="/" element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <Dashboard />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/proyectos" element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ProjectsPage />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/proyectos/:projectId" element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ProjectDetailPage />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/crm" element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <CRMPage />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/reportes" element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ReportsPage />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              
+              {/* Redireccionar rutas no encontradas */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+        </Router>
+      </SocketProvider>
     </AuthProvider>
   );
 }
