@@ -8,6 +8,10 @@ const useSocket = () => {
   const [connected, setConnected] = useState(false);
   const [notifications, setNotifications] = useState([]);
   
+  // 🆕 Estados para usuarios en línea
+  const [onlineUsers, setOnlineUsers] = useState(new Map());
+  const [projectOnlineUsers, setProjectOnlineUsers] = useState(new Map()); // projectId -> users array
+  
   // Referencias para evitar re-creaciones
   const socketRef = useRef(null);
   const listenersRef = useRef(new Map());
@@ -53,7 +57,134 @@ const useSocket = () => {
       });
 
       // =================================================================
-      // 🆕 EVENT LISTENERS PARA CHAT
+      // 🆕 EVENT LISTENERS PARA USUARIOS EN LÍNEA
+      // =================================================================
+
+      // Lista de usuarios en línea de un proyecto
+      newSocket.on('project_online_users', (data) => {
+        console.log('👥 Usuarios en línea del proyecto recibidos:', data);
+        
+        const { projectId, users } = data;
+        
+        // Actualizar mapa de usuarios en línea por proyecto
+        setProjectOnlineUsers(prev => {
+          const newMap = new Map(prev);
+          newMap.set(projectId, users || []);
+          return newMap;
+        });
+
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('projectOnlineUsers', { 
+          detail: { projectId, users: users || [] }
+        }));
+      });
+
+      // Usuario se unió al proyecto
+      newSocket.on('user_joined_project', (data) => {
+        console.log('👋 Usuario se unió al proyecto:', data);
+        
+        const { projectId, userId, userName, userAvatar } = data;
+        
+        // Actualizar usuarios del proyecto
+        setProjectOnlineUsers(prev => {
+          const newMap = new Map(prev);
+          const currentUsers = newMap.get(projectId) || [];
+          const userExists = currentUsers.some(u => u.userId === userId);
+          
+          if (!userExists) {
+            const updatedUsers = [...currentUsers, {
+              userId,
+              userName,
+              userAvatar,
+              isOnline: true,
+              connectedAt: new Date()
+            }];
+            newMap.set(projectId, updatedUsers);
+          }
+          
+          return newMap;
+        });
+
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('userJoinedProject', { 
+          detail: data 
+        }));
+      });
+
+      // Usuario salió del proyecto
+      newSocket.on('user_left_project', (data) => {
+        console.log('👋 Usuario salió del proyecto:', data);
+        
+        const { projectId, userId } = data;
+        
+        // Actualizar usuarios del proyecto
+        setProjectOnlineUsers(prev => {
+          const newMap = new Map(prev);
+          const currentUsers = newMap.get(projectId) || [];
+          const updatedUsers = currentUsers.filter(u => u.userId !== userId);
+          newMap.set(projectId, updatedUsers);
+          return newMap;
+        });
+
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('userLeftProject', { 
+          detail: data 
+        }));
+      });
+
+      // 🆕 Miembro removido del proyecto
+      newSocket.on('member_removed', (data) => {
+        console.log('🚫 Miembro removido del proyecto:', data);
+        
+        const { projectId, removedMemberId } = data;
+        
+        // Actualizar usuarios en línea
+        setProjectOnlineUsers(prev => {
+          const newMap = new Map(prev);
+          const currentUsers = newMap.get(projectId) || [];
+          const updatedUsers = currentUsers.filter(u => u.userId !== removedMemberId);
+          newMap.set(projectId, updatedUsers);
+          return newMap;
+        });
+
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('memberRemoved', { 
+          detail: data 
+        }));
+      });
+
+      // 🆕 Usuario fue removido del proyecto
+      newSocket.on('removed_from_project', (data) => {
+        console.log('🚫 Fuiste removido del proyecto:', data);
+        
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('removedFromProject', { 
+          detail: data 
+        }));
+      });
+
+      // 🆕 Usuario fue agregado al proyecto
+      newSocket.on('added_to_project', (data) => {
+        console.log('✅ Fuiste agregado al proyecto:', data);
+        
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('addedToProject', { 
+          detail: data 
+        }));
+      });
+
+      // 🆕 Nuevo miembro agregado al proyecto
+      newSocket.on('member_added', (data) => {
+        console.log('👥 Nuevo miembro agregado al proyecto:', data);
+        
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('memberAdded', { 
+          detail: data 
+        }));
+      });
+
+      // =================================================================
+      // EVENT LISTENERS PARA CHAT (EXISTENTES)
       // =================================================================
 
       // Nuevo mensaje recibido
@@ -67,6 +198,16 @@ const useSocket = () => {
             message: data.message,
             timestamp: data.timestamp
           } 
+        }));
+      });
+
+      // 🆕 Nuevo mensaje global (para notificaciones)
+      newSocket.on('new_message_global', (data) => {
+        console.log('📨 Nuevo mensaje global recibido:', data);
+        
+        // Emitir evento personalizado
+        window.dispatchEvent(new CustomEvent('newMessageGlobal', { 
+          detail: data
         }));
       });
 
@@ -181,6 +322,26 @@ const useSocket = () => {
         window.dispatchEvent(new CustomEvent('projectUpdated', { detail: data }));
       });
 
+      // Confirmaciones
+      newSocket.on('project_joined', (data) => {
+        console.log('✅ Confirmación de unión al proyecto:', data);
+      });
+
+      newSocket.on('channel_joined', (data) => {
+        console.log('✅ Confirmación de unión al canal:', data);
+      });
+
+      // Manejo de errores
+      newSocket.on('error', (error) => {
+        console.error('❌ Error del socket:', error);
+        // Puedes mostrar una notificación al usuario
+        addNotification({
+          id: Date.now(),
+          type: 'error',
+          message: error.message || 'Error de conexión'
+        });
+      });
+
       // Guardar referencias
       socketRef.current = newSocket;
       setSocket(newSocket);
@@ -191,14 +352,12 @@ const useSocket = () => {
         newSocket.close();
         setSocket(null);
         setConnected(false);
+        setOnlineUsers(new Map());
+        setProjectOnlineUsers(new Map());
       };
     } else {
       // Limpiar conexión si no está autenticado
       console.log('🔌 Usuario no autenticado, limpiando socket');
-      console.log('   isAuthenticated:', isAuthenticated);
-      console.log('   hasToken:', !!token);
-      console.log('   hasUser:', !!user);
-      console.log('   isLoading:', isLoading);
       
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -207,6 +366,8 @@ const useSocket = () => {
       
       setSocket(null);
       setConnected(false);
+      setOnlineUsers(new Map());
+      setProjectOnlineUsers(new Map());
     }
   }, [isAuthenticated, token, user, isLoading]);
 
@@ -233,7 +394,54 @@ const useSocket = () => {
   }, []);
 
   // =================================================================
-  // 🆕 FUNCIONES PARA CHAT
+  // 🆕 FUNCIONES PARA USUARIOS EN LÍNEA Y GESTIÓN DE MIEMBROS
+  // =================================================================
+
+  // Obtener usuarios en línea de un proyecto
+  const getProjectOnlineUsers = useCallback((projectId) => {
+    return projectOnlineUsers.get(projectId) || [];
+  }, [projectOnlineUsers]);
+
+  // Verificar si un usuario está en línea en un proyecto
+  const isUserOnlineInProject = useCallback((projectId, userId) => {
+    const users = projectOnlineUsers.get(projectId) || [];
+    return users.some(user => user.userId === userId && user.isOnline);
+  }, [projectOnlineUsers]);
+
+  // Obtener count de usuarios en línea de un proyecto
+  const getOnlineUsersCount = useCallback((projectId) => {
+    const users = projectOnlineUsers.get(projectId) || [];
+    return users.filter(user => user.isOnline).length;
+  }, [projectOnlineUsers]);
+
+  // Solicitar usuarios en línea de un proyecto
+  const requestProjectOnlineUsers = useCallback((projectId) => {
+    if (socket && connected) {
+      console.log(`👥 Solicitando usuarios en línea del proyecto: ${projectId}`);
+      socket.emit('request_project_online_users', projectId);
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // Remover miembro del proyecto
+  const removeMember = useCallback((projectId, memberIdToRemove, reason) => {
+    if (socket && connected) {
+      console.log(`🚫 Removiendo miembro: ${memberIdToRemove} del proyecto: ${projectId}`);
+      socket.emit('remove_project_member', { 
+        projectId, 
+        memberIdToRemove, 
+        reason: reason || 'Sin razón especificada' 
+      });
+      return true;
+    } else {
+      console.log(`⏳ Socket no listo, no se puede remover miembro`);
+      return false;
+    }
+  }, [socket, connected]);
+
+  // =================================================================
+  // FUNCIONES PARA CHAT (EXISTENTES)
   // =================================================================
 
   // Unirse a un canal
@@ -309,7 +517,16 @@ const useSocket = () => {
 
   const leaveProject = useCallback((projectId) => {
     if (socket && connected) {
+      console.log(`👋 Saliendo del proyecto: ${projectId}`);
       socket.emit('leave_project', projectId);
+      
+      // Limpiar usuarios en línea del proyecto local
+      setProjectOnlineUsers(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(projectId);
+        return newMap;
+      });
+      
       return true;
     }
     return false;
@@ -383,11 +600,22 @@ const useSocket = () => {
     connected,
     notifications,
     
+    // 🆕 Estados y funciones de usuarios en línea
+    onlineUsers,
+    projectOnlineUsers,
+    getProjectOnlineUsers,
+    isUserOnlineInProject,
+    getOnlineUsersCount,
+    requestProjectOnlineUsers,
+    
+    // 🆕 Funciones de gestión de miembros
+    removeMember,
+    
     // Funciones de notificaciones
     addNotification,
     removeNotification,
     
-    // 🆕 Funciones de chat
+    // Funciones de chat
     joinChannel,
     leaveChannel,
     startTyping,

@@ -1,11 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useSocket } from '../../context/SocketContext';
+import useSocket from '../../hooks/useSocket';
 import API from '../../services/api';
 
 const ProjectCommunication = ({ projectId, project }) => {
   const { user, token } = useAuth();
-  const { socket, connected: socketConnected, joinProjectRoom, leaveProjectRoom, emit, on, off } = useSocket();
+  const { 
+    socket, 
+    connected: socketConnected, 
+    joinProject, 
+    leaveProject, 
+    emit, 
+    on, 
+    off,
+    getProjectOnlineUsers,
+    isUserOnlineInProject,
+    getOnlineUsersCount,
+    requestProjectOnlineUsers,
+    removeMember
+  } = useSocket();
   
   // Estados básicos
   const [channels, setChannels] = useState([]);
@@ -15,9 +28,9 @@ const ProjectCommunication = ({ projectId, project }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // 🆕 Estados para usuarios en línea
-  const [onlineUsers, setOnlineUsers] = useState(new Map());
+  // 🆕 Estados para usuarios en línea y miembros
   const [projectMembers, setProjectMembers] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   
   // Estados para notificaciones
@@ -28,6 +41,7 @@ const ProjectCommunication = ({ projectId, project }) => {
   const [showCreateChannelModal, setShowCreateChannelModal] = useState(false);
   const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
+  const [removeReason, setRemoveReason] = useState('');
   const [newChannelData, setNewChannelData] = useState({
     name: '',
     description: ''
@@ -56,86 +70,135 @@ const ProjectCommunication = ({ projectId, project }) => {
   };
 
   // =================================================================
-  // 🆕 SOCKET.IO CON TRACKING DE USUARIOS
+  // 🆕 SOCKET.IO CON TRACKING DE USUARIOS EN LÍNEA
   // =================================================================
 
   useEffect(() => {
     if (!projectId || !socketConnected || !socket) return;
 
     console.log('🏠 PROJECT COMMUNICATION: Uniéndose al proyecto:', projectId);
-    joinProjectRoom(projectId);
+    
+    // Unirse al proyecto
+    joinProject(projectId);
+    
+    // Solicitar usuarios en línea
+    setTimeout(() => {
+      requestProjectOnlineUsers(projectId);
+    }, 1000);
 
-    // 🆕 Eventos para tracking de usuarios en línea
+    // 🆕 Configurar listeners para eventos de usuarios
+    const handleProjectOnlineUsers = (data) => {
+      console.log('👥 PROJECT COMMUNICATION: Usuarios en línea actualizados:', data);
+      if (data.detail.projectId === projectId) {
+        setOnlineUsers(data.detail.users || []);
+      }
+    };
+
     const handleUserJoinedProject = (data) => {
-      console.log('👋 Usuario se unió al proyecto:', data);
-      if (data.projectId === projectId) {
+      console.log('👋 PROJECT COMMUNICATION: Usuario se unió:', data);
+      if (data.detail.projectId === projectId) {
+        // Agregar mensaje de actividad
+        const activityMessage = {
+          id: Date.now(),
+          _id: `activity_${Date.now()}`,
+          sender: { name: 'Sistema', _id: 'system' },
+          content: `${data.detail.userName} se conectó al proyecto`,
+          createdAt: new Date(),
+          type: 'activity'
+        };
+        setMessages(prev => [...prev, activityMessage]);
+        
+        // Actualizar usuarios en línea
         setOnlineUsers(prev => {
-          const newOnlineUsers = new Map(prev);
-          newOnlineUsers.set(data.userId, {
-            userId: data.userId,
-            userName: data.userName,
-            isOnline: true,
-            joinedAt: new Date()
-          });
-          return newOnlineUsers;
+          const exists = prev.some(u => u.userId === data.detail.userId);
+          if (!exists) {
+            return [...prev, {
+              userId: data.detail.userId,
+              userName: data.detail.userName,
+              userAvatar: data.detail.userAvatar,
+              isOnline: true,
+              connectedAt: new Date()
+            }];
+          }
+          return prev;
         });
       }
     };
 
     const handleUserLeftProject = (data) => {
-      console.log('👋 Usuario salió del proyecto:', data);
-      if (data.projectId === projectId) {
-        setOnlineUsers(prev => {
-          const newOnlineUsers = new Map(prev);
-          if (newOnlineUsers.has(data.userId)) {
-            newOnlineUsers.set(data.userId, {
-              ...newOnlineUsers.get(data.userId),
-              isOnline: false,
-              leftAt: new Date()
-            });
-          }
-          return newOnlineUsers;
-        });
+      console.log('👋 PROJECT COMMUNICATION: Usuario salió:', data);
+      if (data.detail.projectId === projectId) {
+        // Agregar mensaje de actividad
+        const activityMessage = {
+          id: Date.now(),
+          _id: `activity_${Date.now()}`,
+          sender: { name: 'Sistema', _id: 'system' },
+          content: `${data.detail.userName} se desconectó del proyecto`,
+          createdAt: new Date(),
+          type: 'activity'
+        };
+        setMessages(prev => [...prev, activityMessage]);
+        
+        // Actualizar usuarios en línea
+        setOnlineUsers(prev => prev.filter(u => u.userId !== data.detail.userId));
       }
     };
 
-    const handleUserConnected = (data) => {
-      console.log('🟢 Usuario conectado:', data);
-      setOnlineUsers(prev => {
-        const newOnlineUsers = new Map(prev);
-        newOnlineUsers.set(data.userId, {
-          userId: data.userId,
-          userName: data.userName,
-          isOnline: true,
-          connectedAt: new Date()
-        });
-        return newOnlineUsers;
-      });
+    const handleMemberRemoved = (data) => {
+      console.log('🚫 PROJECT COMMUNICATION: Miembro removido:', data);
+      if (data.detail.projectId === projectId) {
+        // Agregar mensaje de actividad
+        const activityMessage = {
+          id: Date.now(),
+          _id: `activity_${Date.now()}`,
+          sender: { name: 'Sistema', _id: 'system' },
+          content: `Un miembro fue removido del proyecto por ${data.detail.removedBy.name}`,
+          createdAt: new Date(),
+          type: 'activity'
+        };
+        setMessages(prev => [...prev, activityMessage]);
+        
+        // Actualizar lista de miembros y usuarios en línea
+        setProjectMembers(prev => prev.filter(member => member._id !== data.detail.removedMemberId));
+        setOnlineUsers(prev => prev.filter(u => u.userId !== data.detail.removedMemberId));
+      }
     };
 
-    const handleUserDisconnected = (data) => {
-      console.log('🔴 Usuario desconectado:', data);
-      setOnlineUsers(prev => {
-        const newOnlineUsers = new Map(prev);
-        if (newOnlineUsers.has(data.userId)) {
-          newOnlineUsers.set(data.userId, {
-            ...newOnlineUsers.get(data.userId),
-            isOnline: false,
-            disconnectedAt: new Date()
-          });
-        }
-        return newOnlineUsers;
-      });
+    const handleRemovedFromProject = (data) => {
+      console.log('🚫 PROJECT COMMUNICATION: Fuiste removido del proyecto:', data);
+      alert(`Has sido removido del proyecto "${data.detail.projectName}" por ${data.detail.removedBy}. Razón: ${data.detail.reason}`);
+      
+      // Redirigir o actualizar la vista
+      window.location.href = '/projects';
+    };
+
+    const handleMemberAdded = (data) => {
+      console.log('👥 PROJECT COMMUNICATION: Nuevo miembro agregado:', data);
+      if (data.detail.projectId === projectId) {
+        // Agregar mensaje de actividad
+        const activityMessage = {
+          id: Date.now(),
+          _id: `activity_${Date.now()}`,
+          sender: { name: 'Sistema', _id: 'system' },
+          content: `${data.detail.newMember.name} fue agregado al proyecto por ${data.detail.addedBy.name}`,
+          createdAt: new Date(),
+          type: 'activity'
+        };
+        setMessages(prev => [...prev, activityMessage]);
+        
+        // Recargar miembros del proyecto
+        loadProjectMembers();
+      }
     };
 
     // Manejar mensajes en tiempo real
     const handleNewMessageGlobal = (data) => {
-      console.log('📨 PROJECT COMMUNICATION: Nuevo mensaje:', data);
+      console.log('📨 PROJECT COMMUNICATION: Nuevo mensaje global:', data);
       
-      const { channelId, channelName, message } = data;
-      const currentActiveChannel = activeChannelRef.current;
-      
-      if (data.projectId === projectId) {
+      if (data.detail.projectId === projectId) {
+        const { channelId, message } = data.detail;
+        const currentActiveChannel = activeChannelRef.current;
+        
         const isFromActiveChannel = String(channelId) === String(currentActiveChannel?._id);
         const isFromSelf = String(message.sender?._id) === String(user?.id);
         
@@ -163,63 +226,56 @@ const ProjectCommunication = ({ projectId, project }) => {
     };
 
     const handleChannelCreated = (data) => {
-      if (data.projectId === projectId) {
+      if (data.detail.projectId === projectId) {
         console.log('📢 PROJECT COMMUNICATION: Nuevo canal:', data);
         setChannels(prev => {
-          const exists = prev.some(ch => ch._id === data.channel._id);
+          const exists = prev.some(ch => ch._id === data.detail.channel._id);
           if (!exists) {
-            return [data.channel, ...prev];
+            return [data.detail.channel, ...prev];
           }
           return prev;
         });
       }
     };
 
-    // 🆕 Evento para obtener usuarios en línea del proyecto
-    const handleProjectOnlineUsers = (data) => {
-      console.log('👥 Usuarios en línea del proyecto:', data);
-      if (data.projectId === projectId) {
-        const usersMap = new Map();
-        data.users.forEach(user => {
-          usersMap.set(user.userId, {
-            userId: user.userId,
-            userName: user.userName,
-            isOnline: true,
-            connectedAt: new Date(user.connectedAt)
-          });
-        });
-        setOnlineUsers(usersMap);
-      }
-    };
-
-    // Registrar eventos
-    on('new_message_global', handleNewMessageGlobal);
-    on('channel_created', handleChannelCreated);
-    on('user_joined_project', handleUserJoinedProject);
-    on('user_left_project', handleUserLeftProject);
-    on('user_connected', handleUserConnected);
-    on('user_disconnected', handleUserDisconnected);
-    on('project_online_users', handleProjectOnlineUsers);
-
-    // 🆕 Solicitar usuarios en línea del proyecto
-    emit('request_project_online_users', projectId);
+    // Registrar event listeners usando addEventListener
+    window.addEventListener('projectOnlineUsers', handleProjectOnlineUsers);
+    window.addEventListener('userJoinedProject', handleUserJoinedProject);
+    window.addEventListener('userLeftProject', handleUserLeftProject);
+    window.addEventListener('memberRemoved', handleMemberRemoved);
+    window.addEventListener('removedFromProject', handleRemovedFromProject);
+    window.addEventListener('memberAdded', handleMemberAdded);
+    window.addEventListener('newMessageGlobal', handleNewMessageGlobal);
+    window.addEventListener('channelCreated', handleChannelCreated);
 
     return () => {
-      off('new_message_global', handleNewMessageGlobal);
-      off('channel_created', handleChannelCreated);
-      off('user_joined_project', handleUserJoinedProject);
-      off('user_left_project', handleUserLeftProject);
-      off('user_connected', handleUserConnected);
-      off('user_disconnected', handleUserDisconnected);
-      off('project_online_users', handleProjectOnlineUsers);
-      leaveProjectRoom(projectId);
+      // Limpiar event listeners
+      window.removeEventListener('projectOnlineUsers', handleProjectOnlineUsers);
+      window.removeEventListener('userJoinedProject', handleUserJoinedProject);
+      window.removeEventListener('userLeftProject', handleUserLeftProject);
+      window.removeEventListener('memberRemoved', handleMemberRemoved);
+      window.removeEventListener('removedFromProject', handleRemovedFromProject);
+      window.removeEventListener('memberAdded', handleMemberAdded);
+      window.removeEventListener('newMessageGlobal', handleNewMessageGlobal);
+      window.removeEventListener('channelCreated', handleChannelCreated);
+      
+      // Salir del proyecto
+      leaveProject(projectId);
     };
-  }, [projectId, socketConnected, socket, user?.id, joinProjectRoom, leaveProjectRoom, on, off, emit]);
+  }, [projectId, socketConnected, socket, user?.id, joinProject, leaveProject, requestProjectOnlineUsers]);
 
   // Sincronizar activeChannel con referencia
   useEffect(() => {
     activeChannelRef.current = activeChannel;
   }, [activeChannel]);
+
+  // Actualizar usuarios en línea desde el hook
+  useEffect(() => {
+    if (projectId) {
+      const users = getProjectOnlineUsers(projectId);
+      setOnlineUsers(users);
+    }
+  }, [projectId, getProjectOnlineUsers]);
 
   // =================================================================
   // 🆕 CARGAR MIEMBROS DEL PROYECTO
@@ -240,7 +296,8 @@ const ProjectCommunication = ({ projectId, project }) => {
             name: projectData.owner.name,
             email: projectData.owner.email,
             role: 'owner',
-            isOwner: true
+            isOwner: true,
+            canBeRemoved: false
           }] : []),
           // Team members
           ...(projectData.team || []).map(member => ({
@@ -248,7 +305,8 @@ const ProjectCommunication = ({ projectId, project }) => {
             name: member.user?.name || member.name,
             email: member.user?.email || member.email,
             role: member.role || 'member',
-            isOwner: false
+            isOwner: false,
+            canBeRemoved: projectData.owner?._id === user?.id // Solo el owner puede remover
           }))
         ];
         
@@ -389,9 +447,9 @@ const ProjectCommunication = ({ projectId, project }) => {
   // =================================================================
 
   const canManageMembers = () => {
-    // Solo el owner o admins pueden gestionar miembros
+    // Solo el owner puede gestionar miembros
     const currentMember = projectMembers.find(member => member._id === user?.id);
-    return currentMember && (currentMember.isOwner || currentMember.role === 'admin');
+    return currentMember && currentMember.isOwner;
   };
 
   const handleRemoveMember = (member) => {
@@ -418,31 +476,26 @@ const ProjectCommunication = ({ projectId, project }) => {
     if (!memberToRemove) return;
 
     try {
-      const response = await API.delete(`/projects/${projectId}/members/${memberToRemove._id}`);
+      // Usar la función del hook de Socket.IO
+      const success = removeMember(projectId, memberToRemove._id, removeReason);
       
-      if (response.data?.success) {
-        // Actualizar lista de miembros
-        setProjectMembers(prev => prev.filter(member => member._id !== memberToRemove._id));
-        
-        // Actualizar usuarios en línea
-        setOnlineUsers(prev => {
-          const newOnlineUsers = new Map(prev);
-          newOnlineUsers.delete(memberToRemove._id);
-          return newOnlineUsers;
+      if (success) {
+        // También hacer la llamada REST API
+        const response = await API.delete(`/projects/${projectId}/members/${memberToRemove._id}`, {
+          data: { reason: removeReason }
         });
         
-        setShowRemoveMemberModal(false);
-        setMemberToRemove(null);
-        
-        // Notificar via socket
-        emit('member_removed', {
-          projectId,
-          removedMember: memberToRemove,
-          removedBy: user
-        });
-        
-        alert(`${memberToRemove.name} ha sido eliminado del proyecto`);
+        if (response.data?.success) {
+          console.log('✅ Miembro removido exitosamente via API');
+        }
       }
+      
+      // Limpiar modal
+      setShowRemoveMemberModal(false);
+      setMemberToRemove(null);
+      setRemoveReason('');
+      
+      // La actualización se manejará via Socket.IO
       
     } catch (error) {
       console.error('❌ Error eliminando miembro:', error);
@@ -504,11 +557,11 @@ const ProjectCommunication = ({ projectId, project }) => {
   };
 
   const isUserOnline = (userId) => {
-    return onlineUsers.get(userId)?.isOnline || false;
+    return onlineUsers.some(user => user.userId === userId && user.isOnline);
   };
 
   const getOnlineCount = () => {
-    return Array.from(onlineUsers.values()).filter(user => user.isOnline).length;
+    return onlineUsers.filter(user => user.isOnline).length;
   };
 
   // =================================================================
@@ -676,38 +729,49 @@ const ProjectCommunication = ({ projectId, project }) => {
                     <div>
                       {messages.map((message) => (
                         <div key={message._id} className="mb-2">
-                          <div className="d-flex align-items-start">
-                            <div className="position-relative me-2">
-                              <img 
-                                src={generateAvatarUrl(message.sender?.name)}
-                                className="rounded-circle flex-shrink-0"
-                                style={{ width: '24px', height: '24px' }}
-                                alt={message.sender?.name}
-                              />
-                              {/* 🆕 Indicador de estado en línea */}
-                              {isUserOnline(message.sender?._id) && (
-                                <span 
-                                  className="position-absolute bottom-0 end-0 bg-success border border-white rounded-circle"
-                                  style={{ width: '8px', height: '8px' }}
-                                  title="En línea"
-                                ></span>
-                              )}
+                          {message.type === 'activity' ? (
+                            /* 🆕 Mensaje de actividad del sistema */
+                            <div className="text-center my-2">
+                              <small className="badge bg-secondary">
+                                <i className="bi bi-info-circle me-1"></i>
+                                {message.content}
+                              </small>
                             </div>
-                            <div className="flex-grow-1 min-width-0">
-                              <div className="d-flex align-items-baseline">
-                                <strong className="small me-2">
-                                  {message.sender?.name || 'Usuario'}
-                                </strong>
-                                <small className="text-muted">
-                                  {formatMessageTime(message.createdAt)}
-                                </small>
-                                {message.sender?._id === user?.id && (
-                                  <small className="badge bg-light text-dark ms-1">Tú</small>
+                          ) : (
+                            /* Mensaje normal */
+                            <div className="d-flex align-items-start">
+                              <div className="position-relative me-2">
+                                <img 
+                                  src={generateAvatarUrl(message.sender?.name)}
+                                  className="rounded-circle flex-shrink-0"
+                                  style={{ width: '24px', height: '24px' }}
+                                  alt={message.sender?.name}
+                                />
+                                {/* 🆕 Indicador de estado en línea */}
+                                {isUserOnline(message.sender?._id) && (
+                                  <span 
+                                    className="position-absolute bottom-0 end-0 bg-success border border-white rounded-circle"
+                                    style={{ width: '8px', height: '8px' }}
+                                    title="En línea"
+                                  ></span>
                                 )}
                               </div>
-                              <div className="small mt-1">{message.content}</div>
+                              <div className="flex-grow-1 min-width-0">
+                                <div className="d-flex align-items-baseline">
+                                  <strong className="small me-2">
+                                    {message.sender?.name || 'Usuario'}
+                                  </strong>
+                                  <small className="text-muted">
+                                    {formatMessageTime(message.createdAt)}
+                                  </small>
+                                  {message.sender?._id === user?.id && (
+                                    <small className="badge bg-light text-dark ms-1">Tú</small>
+                                  )}
+                                </div>
+                                <div className="small mt-1">{message.content}</div>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       ))}
                       <div ref={messagesEndRef} />
@@ -756,7 +820,7 @@ const ProjectCommunication = ({ projectId, project }) => {
           <div className="col-md-3">
             <div className="card" style={{ height: '450px' }}>
               <div className="card-header bg-light d-flex justify-content-between align-items-center">
-                <strong>Miembros</strong>
+                <strong>Miembros ({projectMembers.length})</strong>
                 <button 
                   className="btn btn-sm btn-outline-secondary"
                   onClick={() => setShowMembersPanel(false)}
@@ -772,54 +836,113 @@ const ProjectCommunication = ({ projectId, project }) => {
                   </div>
                 ) : (
                   <div>
-                    {projectMembers.map((member) => {
-                      const isOnline = isUserOnline(member._id);
-                      const isCurrentUser = member._id === user?.id;
-                      
-                      return (
-                        <div key={member._id} className="d-flex align-items-center justify-content-between p-2 border-bottom">
-                          <div className="d-flex align-items-center flex-grow-1">
-                            <div className="position-relative me-2">
-                              <img 
-                                src={generateAvatarUrl(member.name)}
-                                className="rounded-circle"
-                                style={{ width: '28px', height: '28px' }}
-                                alt={member.name}
-                              />
-                              {/* Indicador de estado */}
-                              <span 
-                                className={`position-absolute bottom-0 end-0 border border-white rounded-circle ${
-                                  isOnline ? 'bg-success' : 'bg-secondary'
-                                }`}
-                                style={{ width: '8px', height: '8px' }}
-                                title={isOnline ? 'En línea' : 'Fuera de línea'}
-                              ></span>
-                            </div>
-                            <div className="flex-grow-1 min-width-0">
-                              <div className="small fw-bold text-truncate">
-                                {member.name}
-                                {isCurrentUser && <span className="text-muted"> (Tú)</span>}
-                              </div>
-                              <div className="text-muted" style={{ fontSize: '11px' }}>
-                                {member.isOwner ? '👑 Propietario' : `📋 ${member.role || 'Miembro'}`}
-                              </div>
-                            </div>
-                          </div>
+                    {/* 🆕 Sección de usuarios en línea */}
+                    {onlineUsers.length > 0 && (
+                      <div className="mb-2">
+                        <h6 className="text-success small">
+                          <i className="bi bi-circle-fill" style={{ fontSize: '8px' }}></i> 
+                          En línea ({getOnlineCount()})
+                        </h6>
+                        {onlineUsers.filter(u => u.isOnline).map((onlineUser) => {
+                          const member = projectMembers.find(m => m._id === onlineUser.userId);
+                          if (!member) return null;
                           
-                          {/* 🆕 Botón para eliminar miembro */}
-                          {canManageMembers() && !member.isOwner && !isCurrentUser && (
-                            <button
-                              className="btn btn-sm btn-outline-danger"
-                              onClick={() => handleRemoveMember(member)}
-                              title="Eliminar del proyecto"
-                              style={{ fontSize: '10px', padding: '2px 6px' }}
-                            >
-                              <i className="bi bi-trash"></i>
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
+                          const isCurrentUser = member._id === user?.id;
+                          
+                          return (
+                            <div key={onlineUser.userId} className="d-flex align-items-center justify-content-between p-1 mb-1">
+                              <div className="d-flex align-items-center flex-grow-1">
+                                <div className="position-relative me-2">
+                                  <img 
+                                    src={generateAvatarUrl(member.name)}
+                                    className="rounded-circle"
+                                    style={{ width: '24px', height: '24px' }}
+                                    alt={member.name}
+                                  />
+                                  <span 
+                                    className="position-absolute bottom-0 end-0 bg-success border border-white rounded-circle"
+                                    style={{ width: '6px', height: '6px' }}
+                                  ></span>
+                                </div>
+                                <div className="flex-grow-1 min-width-0">
+                                  <div className="small fw-bold text-truncate">
+                                    {member.name}
+                                    {isCurrentUser && <span className="text-muted"> (Tú)</span>}
+                                  </div>
+                                  <div className="text-muted" style={{ fontSize: '10px' }}>
+                                    {member.isOwner ? '👑 Propietario' : `📋 ${member.role || 'Miembro'}`}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* 🆕 Botón para eliminar miembro */}
+                              {canManageMembers() && !member.isOwner && !isCurrentUser && (
+                                <button
+                                  className="btn btn-sm btn-outline-danger"
+                                  onClick={() => handleRemoveMember(member)}
+                                  title="Eliminar del proyecto"
+                                  style={{ fontSize: '10px', padding: '1px 4px' }}
+                                >
+                                  <i className="bi bi-trash" style={{ fontSize: '10px' }}></i>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <hr className="my-2" />
+                      </div>
+                    )}
+
+                    {/* 🆕 Sección de usuarios fuera de línea */}
+                    <div>
+                      <h6 className="text-muted small">
+                        <i className="bi bi-circle" style={{ fontSize: '8px' }}></i> 
+                        Fuera de línea ({projectMembers.length - getOnlineCount()})
+                      </h6>
+                      {projectMembers.filter(member => !isUserOnline(member._id)).map((member) => {
+                        const isCurrentUser = member._id === user?.id;
+                        
+                        return (
+                          <div key={member._id} className="d-flex align-items-center justify-content-between p-1 mb-1">
+                            <div className="d-flex align-items-center flex-grow-1">
+                              <div className="position-relative me-2">
+                                <img 
+                                  src={generateAvatarUrl(member.name)}
+                                  className="rounded-circle"
+                                  style={{ width: '24px', height: '24px', opacity: 0.6 }}
+                                  alt={member.name}
+                                />
+                                <span 
+                                  className="position-absolute bottom-0 end-0 bg-secondary border border-white rounded-circle"
+                                  style={{ width: '6px', height: '6px' }}
+                                ></span>
+                              </div>
+                              <div className="flex-grow-1 min-width-0">
+                                <div className="small text-truncate" style={{ opacity: 0.7 }}>
+                                  {member.name}
+                                  {isCurrentUser && <span className="text-muted"> (Tú)</span>}
+                                </div>
+                                <div className="text-muted" style={{ fontSize: '10px' }}>
+                                  {member.isOwner ? '👑 Propietario' : `📋 ${member.role || 'Miembro'}`}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* 🆕 Botón para eliminar miembro */}
+                            {canManageMembers() && !member.isOwner && !isCurrentUser && (
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => handleRemoveMember(member)}
+                                title="Eliminar del proyecto"
+                                style={{ fontSize: '10px', padding: '1px 4px' }}
+                              >
+                                <i className="bi bi-trash" style={{ fontSize: '10px' }}></i>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -886,10 +1009,13 @@ const ProjectCommunication = ({ projectId, project }) => {
       {/* 🆕 Modal Confirmar Eliminación de Miembro */}
       {showRemoveMemberModal && memberToRemove && (
         <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-sm">
+          <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
-                <h6 className="modal-title">Confirmar Eliminación</h6>
+                <h6 className="modal-title text-danger">
+                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  Confirmar Eliminación
+                </h6>
                 <button
                   type="button"
                   className="btn-close"
@@ -899,23 +1025,38 @@ const ProjectCommunication = ({ projectId, project }) => {
               <div className="modal-body">
                 <p>¿Estás seguro que deseas eliminar a <strong>{memberToRemove.name}</strong> del proyecto?</p>
                 <div className="alert alert-warning">
-                  <i className="bi bi-exclamation-triangle"></i> Esta acción no se puede deshacer.
+                  <i className="bi bi-exclamation-triangle"></i> Esta acción no se puede deshacer. El usuario perderá acceso a todas las conversaciones y archivos del proyecto.
+                </div>
+                
+                <div className="mb-3">
+                  <label htmlFor="removeReason" className="form-label">
+                    Razón (opcional):
+                  </label>
+                  <textarea
+                    id="removeReason"
+                    className="form-control"
+                    rows="3"
+                    placeholder="Explica por qué estás removiendo a este miembro..."
+                    value={removeReason}
+                    onChange={(e) => setRemoveReason(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="modal-footer">
                 <button
                   type="button"
-                  className="btn btn-sm btn-secondary"
+                  className="btn btn-secondary"
                   onClick={() => setShowRemoveMemberModal(false)}
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
-                  className="btn btn-sm btn-danger"
+                  className="btn btn-danger"
                   onClick={confirmRemoveMember}
                 >
-                  <i className="bi bi-trash"></i> Eliminar
+                  <i className="bi bi-trash me-2"></i>
+                  Eliminar Miembro
                 </button>
               </div>
             </div>
