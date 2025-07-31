@@ -15,12 +15,19 @@ const ProjectCommunication = ({ projectId, project }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
+  // 🆕 Estados para usuarios en línea
+  const [onlineUsers, setOnlineUsers] = useState(new Map());
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [showMembersPanel, setShowMembersPanel] = useState(false);
+  
   // Estados para notificaciones
   const [unreadCounts, setUnreadCounts] = useState(new Map());
   const [totalUnread, setTotalUnread] = useState(0);
   
-  // Estados para crear canal
+  // Estados para modales
   const [showCreateChannelModal, setShowCreateChannelModal] = useState(false);
+  const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState(null);
   const [newChannelData, setNewChannelData] = useState({
     name: '',
     description: ''
@@ -49,7 +56,7 @@ const ProjectCommunication = ({ projectId, project }) => {
   };
 
   // =================================================================
-  // SOCKET.IO INTEGRATION
+  // 🆕 SOCKET.IO CON TRACKING DE USUARIOS
   // =================================================================
 
   useEffect(() => {
@@ -57,6 +64,69 @@ const ProjectCommunication = ({ projectId, project }) => {
 
     console.log('🏠 PROJECT COMMUNICATION: Uniéndose al proyecto:', projectId);
     joinProjectRoom(projectId);
+
+    // 🆕 Eventos para tracking de usuarios en línea
+    const handleUserJoinedProject = (data) => {
+      console.log('👋 Usuario se unió al proyecto:', data);
+      if (data.projectId === projectId) {
+        setOnlineUsers(prev => {
+          const newOnlineUsers = new Map(prev);
+          newOnlineUsers.set(data.userId, {
+            userId: data.userId,
+            userName: data.userName,
+            isOnline: true,
+            joinedAt: new Date()
+          });
+          return newOnlineUsers;
+        });
+      }
+    };
+
+    const handleUserLeftProject = (data) => {
+      console.log('👋 Usuario salió del proyecto:', data);
+      if (data.projectId === projectId) {
+        setOnlineUsers(prev => {
+          const newOnlineUsers = new Map(prev);
+          if (newOnlineUsers.has(data.userId)) {
+            newOnlineUsers.set(data.userId, {
+              ...newOnlineUsers.get(data.userId),
+              isOnline: false,
+              leftAt: new Date()
+            });
+          }
+          return newOnlineUsers;
+        });
+      }
+    };
+
+    const handleUserConnected = (data) => {
+      console.log('🟢 Usuario conectado:', data);
+      setOnlineUsers(prev => {
+        const newOnlineUsers = new Map(prev);
+        newOnlineUsers.set(data.userId, {
+          userId: data.userId,
+          userName: data.userName,
+          isOnline: true,
+          connectedAt: new Date()
+        });
+        return newOnlineUsers;
+      });
+    };
+
+    const handleUserDisconnected = (data) => {
+      console.log('🔴 Usuario desconectado:', data);
+      setOnlineUsers(prev => {
+        const newOnlineUsers = new Map(prev);
+        if (newOnlineUsers.has(data.userId)) {
+          newOnlineUsers.set(data.userId, {
+            ...newOnlineUsers.get(data.userId),
+            isOnline: false,
+            disconnectedAt: new Date()
+          });
+        }
+        return newOnlineUsers;
+      });
+    };
 
     // Manejar mensajes en tiempo real
     const handleNewMessageGlobal = (data) => {
@@ -105,16 +175,46 @@ const ProjectCommunication = ({ projectId, project }) => {
       }
     };
 
+    // 🆕 Evento para obtener usuarios en línea del proyecto
+    const handleProjectOnlineUsers = (data) => {
+      console.log('👥 Usuarios en línea del proyecto:', data);
+      if (data.projectId === projectId) {
+        const usersMap = new Map();
+        data.users.forEach(user => {
+          usersMap.set(user.userId, {
+            userId: user.userId,
+            userName: user.userName,
+            isOnline: true,
+            connectedAt: new Date(user.connectedAt)
+          });
+        });
+        setOnlineUsers(usersMap);
+      }
+    };
+
     // Registrar eventos
     on('new_message_global', handleNewMessageGlobal);
     on('channel_created', handleChannelCreated);
+    on('user_joined_project', handleUserJoinedProject);
+    on('user_left_project', handleUserLeftProject);
+    on('user_connected', handleUserConnected);
+    on('user_disconnected', handleUserDisconnected);
+    on('project_online_users', handleProjectOnlineUsers);
+
+    // 🆕 Solicitar usuarios en línea del proyecto
+    emit('request_project_online_users', projectId);
 
     return () => {
       off('new_message_global', handleNewMessageGlobal);
       off('channel_created', handleChannelCreated);
+      off('user_joined_project', handleUserJoinedProject);
+      off('user_left_project', handleUserLeftProject);
+      off('user_connected', handleUserConnected);
+      off('user_disconnected', handleUserDisconnected);
+      off('project_online_users', handleProjectOnlineUsers);
       leaveProjectRoom(projectId);
     };
-  }, [projectId, socketConnected, socket, user?.id, joinProjectRoom, leaveProjectRoom, on, off]);
+  }, [projectId, socketConnected, socket, user?.id, joinProjectRoom, leaveProjectRoom, on, off, emit]);
 
   // Sincronizar activeChannel con referencia
   useEffect(() => {
@@ -122,7 +222,47 @@ const ProjectCommunication = ({ projectId, project }) => {
   }, [activeChannel]);
 
   // =================================================================
-  // FUNCIONES DE API
+  // 🆕 CARGAR MIEMBROS DEL PROYECTO
+  // =================================================================
+
+  const loadProjectMembers = async () => {
+    if (!projectId) return;
+
+    try {
+      const response = await API.get(`/projects/${projectId}`);
+      
+      if (response.data?.data) {
+        const projectData = response.data.data;
+        const members = [
+          // Owner
+          ...(projectData.owner ? [{
+            _id: projectData.owner._id,
+            name: projectData.owner.name,
+            email: projectData.owner.email,
+            role: 'owner',
+            isOwner: true
+          }] : []),
+          // Team members
+          ...(projectData.team || []).map(member => ({
+            _id: member.user?._id || member._id,
+            name: member.user?.name || member.name,
+            email: member.user?.email || member.email,
+            role: member.role || 'member',
+            isOwner: false
+          }))
+        ];
+        
+        setProjectMembers(members);
+        console.log('👥 Miembros del proyecto cargados:', members.length);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error cargando miembros:', error);
+    }
+  };
+
+  // =================================================================
+  // FUNCIONES DE API EXISTENTES
   // =================================================================
 
   const loadChannels = async () => {
@@ -245,6 +385,72 @@ const ProjectCommunication = ({ projectId, project }) => {
   };
 
   // =================================================================
+  // 🆕 FUNCIONES DE GESTIÓN DE MIEMBROS
+  // =================================================================
+
+  const canManageMembers = () => {
+    // Solo el owner o admins pueden gestionar miembros
+    const currentMember = projectMembers.find(member => member._id === user?.id);
+    return currentMember && (currentMember.isOwner || currentMember.role === 'admin');
+  };
+
+  const handleRemoveMember = (member) => {
+    if (!canManageMembers()) {
+      alert('No tienes permisos para eliminar miembros');
+      return;
+    }
+
+    if (member.isOwner) {
+      alert('No puedes eliminar al propietario del proyecto');
+      return;
+    }
+
+    if (member._id === user?.id) {
+      alert('No puedes eliminarte a ti mismo');
+      return;
+    }
+
+    setMemberToRemove(member);
+    setShowRemoveMemberModal(true);
+  };
+
+  const confirmRemoveMember = async () => {
+    if (!memberToRemove) return;
+
+    try {
+      const response = await API.delete(`/projects/${projectId}/members/${memberToRemove._id}`);
+      
+      if (response.data?.success) {
+        // Actualizar lista de miembros
+        setProjectMembers(prev => prev.filter(member => member._id !== memberToRemove._id));
+        
+        // Actualizar usuarios en línea
+        setOnlineUsers(prev => {
+          const newOnlineUsers = new Map(prev);
+          newOnlineUsers.delete(memberToRemove._id);
+          return newOnlineUsers;
+        });
+        
+        setShowRemoveMemberModal(false);
+        setMemberToRemove(null);
+        
+        // Notificar via socket
+        emit('member_removed', {
+          projectId,
+          removedMember: memberToRemove,
+          removedBy: user
+        });
+        
+        alert(`${memberToRemove.name} ha sido eliminado del proyecto`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error eliminando miembro:', error);
+      alert(`Error: ${error.response?.data?.message || error.message}`);
+    }
+  };
+
+  // =================================================================
   // FUNCIONES DE NOTIFICACIONES
   // =================================================================
 
@@ -297,6 +503,14 @@ const ProjectCommunication = ({ projectId, project }) => {
     return `https://placehold.co/32x32/${colors[colorIndex]}/white?text=${initial}`;
   };
 
+  const isUserOnline = (userId) => {
+    return onlineUsers.get(userId)?.isOnline || false;
+  };
+
+  const getOnlineCount = () => {
+    return Array.from(onlineUsers.values()).filter(user => user.isOnline).length;
+  };
+
   // =================================================================
   // EFECTOS DE INICIALIZACIÓN
   // =================================================================
@@ -304,6 +518,7 @@ const ProjectCommunication = ({ projectId, project }) => {
   useEffect(() => {
     if (projectId && user && token) {
       loadChannels();
+      loadProjectMembers();
     }
   }, [projectId, user?.id, token]);
 
@@ -323,7 +538,7 @@ const ProjectCommunication = ({ projectId, project }) => {
 
   return (
     <div className="communication-tab">
-      {/* Header con estado de conexión */}
+      {/* Header mejorado con usuarios en línea */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <div>
           <h5 className="mb-1">
@@ -339,16 +554,28 @@ const ProjectCommunication = ({ projectId, project }) => {
             )}
           </h5>
           <small className="text-muted">
-            {project?.name} • {channels.length} canales
+            {project?.name} • {channels.length} canales • 
+            <span className="text-success ms-1">
+              <i className="bi bi-circle-fill" style={{ fontSize: '8px' }}></i> {getOnlineCount()} en línea
+            </span>
           </small>
         </div>
-        <button
-          className="btn btn-sm btn-primary"
-          onClick={() => setShowCreateChannelModal(true)}
-          disabled={!projectId}
-        >
-          <i className="bi bi-plus"></i> Canal
-        </button>
+        <div>
+          <button
+            className="btn btn-sm btn-outline-secondary me-2"
+            onClick={() => setShowMembersPanel(!showMembersPanel)}
+            title="Ver miembros del proyecto"
+          >
+            <i className="bi bi-people"></i> {projectMembers.length}
+          </button>
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => setShowCreateChannelModal(true)}
+            disabled={!projectId}
+          >
+            <i className="bi bi-plus"></i> Canal
+          </button>
+        </div>
       </div>
 
       {/* Error */}
@@ -413,7 +640,7 @@ const ProjectCommunication = ({ projectId, project }) => {
         </div>
 
         {/* Área Principal de Chat */}
-        <div className="col-md-9">
+        <div className={`col-md-${showMembersPanel ? '6' : '9'}`}>
           <div className="card" style={{ height: '450px' }}>
             {activeChannel ? (
               <>
@@ -450,12 +677,22 @@ const ProjectCommunication = ({ projectId, project }) => {
                       {messages.map((message) => (
                         <div key={message._id} className="mb-2">
                           <div className="d-flex align-items-start">
-                            <img 
-                              src={generateAvatarUrl(message.sender?.name)}
-                              className="rounded-circle me-2 flex-shrink-0"
-                              style={{ width: '24px', height: '24px' }}
-                              alt={message.sender?.name}
-                            />
+                            <div className="position-relative me-2">
+                              <img 
+                                src={generateAvatarUrl(message.sender?.name)}
+                                className="rounded-circle flex-shrink-0"
+                                style={{ width: '24px', height: '24px' }}
+                                alt={message.sender?.name}
+                              />
+                              {/* 🆕 Indicador de estado en línea */}
+                              {isUserOnline(message.sender?._id) && (
+                                <span 
+                                  className="position-absolute bottom-0 end-0 bg-success border border-white rounded-circle"
+                                  style={{ width: '8px', height: '8px' }}
+                                  title="En línea"
+                                ></span>
+                              )}
+                            </div>
                             <div className="flex-grow-1 min-width-0">
                               <div className="d-flex align-items-baseline">
                                 <strong className="small me-2">
@@ -513,6 +750,82 @@ const ProjectCommunication = ({ projectId, project }) => {
             )}
           </div>
         </div>
+
+        {/* 🆕 Panel de Miembros del Proyecto */}
+        {showMembersPanel && (
+          <div className="col-md-3">
+            <div className="card" style={{ height: '450px' }}>
+              <div className="card-header bg-light d-flex justify-content-between align-items-center">
+                <strong>Miembros</strong>
+                <button 
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={() => setShowMembersPanel(false)}
+                >
+                  <i className="bi bi-x"></i>
+                </button>
+              </div>
+              <div className="card-body p-2" style={{ overflowY: 'auto' }}>
+                {projectMembers.length === 0 ? (
+                  <div className="text-center text-muted p-3">
+                    <i className="bi bi-people fs-4 d-block mb-2"></i>
+                    <p className="small">No hay miembros</p>
+                  </div>
+                ) : (
+                  <div>
+                    {projectMembers.map((member) => {
+                      const isOnline = isUserOnline(member._id);
+                      const isCurrentUser = member._id === user?.id;
+                      
+                      return (
+                        <div key={member._id} className="d-flex align-items-center justify-content-between p-2 border-bottom">
+                          <div className="d-flex align-items-center flex-grow-1">
+                            <div className="position-relative me-2">
+                              <img 
+                                src={generateAvatarUrl(member.name)}
+                                className="rounded-circle"
+                                style={{ width: '28px', height: '28px' }}
+                                alt={member.name}
+                              />
+                              {/* Indicador de estado */}
+                              <span 
+                                className={`position-absolute bottom-0 end-0 border border-white rounded-circle ${
+                                  isOnline ? 'bg-success' : 'bg-secondary'
+                                }`}
+                                style={{ width: '8px', height: '8px' }}
+                                title={isOnline ? 'En línea' : 'Fuera de línea'}
+                              ></span>
+                            </div>
+                            <div className="flex-grow-1 min-width-0">
+                              <div className="small fw-bold text-truncate">
+                                {member.name}
+                                {isCurrentUser && <span className="text-muted"> (Tú)</span>}
+                              </div>
+                              <div className="text-muted" style={{ fontSize: '11px' }}>
+                                {member.isOwner ? '👑 Propietario' : `📋 ${member.role || 'Miembro'}`}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* 🆕 Botón para eliminar miembro */}
+                          {canManageMembers() && !member.isOwner && !isCurrentUser && (
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => handleRemoveMember(member)}
+                              title="Eliminar del proyecto"
+                              style={{ fontSize: '10px', padding: '2px 6px' }}
+                            >
+                              <i className="bi bi-trash"></i>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal Crear Canal */}
@@ -565,6 +878,46 @@ const ProjectCommunication = ({ projectId, project }) => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal Confirmar Eliminación de Miembro */}
+      {showRemoveMemberModal && memberToRemove && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-sm">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h6 className="modal-title">Confirmar Eliminación</h6>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowRemoveMemberModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>¿Estás seguro que deseas eliminar a <strong>{memberToRemove.name}</strong> del proyecto?</p>
+                <div className="alert alert-warning">
+                  <i className="bi bi-exclamation-triangle"></i> Esta acción no se puede deshacer.
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setShowRemoveMemberModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={confirmRemoveMember}
+                >
+                  <i className="bi bi-trash"></i> Eliminar
+                </button>
+              </div>
             </div>
           </div>
         </div>
