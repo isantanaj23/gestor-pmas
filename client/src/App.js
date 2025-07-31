@@ -20,6 +20,14 @@ import ProjectsPage from './components/pages/ProjectsPage';
 import ProjectDetailPage from './components/pages/ProjectDetailPage';
 import CRMPage from './components/pages/CRMPage';
 import ReportsPage from './components/pages/ReportsPage';
+import SimpleChatPage from './components/pages/SimpleChatPage';
+import RealtimeChatPage from './components/pages/RealtimeChatPage';
+import EnhancedRealtimeChatPage from './components/pages/EnhancedRealtimeChatPage';
+import GlobalNotificationsChatPage from './components/pages/GlobalNotificationsChatPage';
+
+
+
+
 
 // 🆕 Componente de notificaciones en tiempo real
 import SocketNotifications from './components/common/SocketNotifications';
@@ -67,6 +75,14 @@ function App() {
                   </MainLayout>
                 </ProtectedRoute>
               } />
+
+              <Route path="/simple-chat/:projectId" element={<SimpleChatPage />} />
+              <Route path="/realtime-chat/:projectId" element={<RealtimeChatPage />} />
+              <Route path="/enhanced-chat/:projectId" element={<EnhancedRealtimeChatPage />} />
+              <Route path="/global-chat/:projectId" element={<GlobalNotificationsChatPage />} />
+
+
+
               
               <Route path="/crm" element={
                 <ProtectedRoute>

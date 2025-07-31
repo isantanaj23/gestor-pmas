@@ -8,7 +8,7 @@ const morgan = require("morgan");
 const compression = require("compression");
 const connectDB = require("./config/database");
 
-// Importar rutas
+// Importar rutas existentes
 const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
@@ -16,7 +16,11 @@ const contactRoutes = require('./routes/contacts');
 const activityRoutes = require('./routes/activities');
 const dashboardRoutes = require('./routes/dashboard');
 const notificationRoutes = require('./routes/notifications');
-const socialPostRoutes = require('./routes/socialPostRoutes'); // 🆕 NUEVA RUTA
+const socialPostRoutes = require('./routes/socialPostRoutes');
+
+// 🆕 Importar rutas del chat
+const channelRoutes = require('./routes/channels');
+const messageRoutes = require('./routes/messages');
 
 // Socket.io
 const SocketHandler = require('./socket/socketHandler');
@@ -35,6 +39,13 @@ const server = http.createServer(app);
 // =================================================================
 const socketHandler = new SocketHandler(server);
 app.set('socketHandler', socketHandler);
+
+// Middleware para hacer socketHandler disponible en las rutas
+app.use((req, res, next) => {
+  req.io = socketHandler.io;
+  req.socketHandler = socketHandler;
+  next();
+});
 
 // =================================================================
 // MIDDLEWARE
@@ -88,14 +99,6 @@ app.get("/", (req, res) => {
     endpoints: {
       health: "/health",
       api: "/api",
-      auth: "/api/auth",
-      projects: "/api/projects",
-      tasks: "/api/tasks",
-      contacts: "/api/contacts",
-      activities: "/api/activities",
-      dashboard: "/api/dashboard",
-      notifications: "/api/notifications",
-      socialPosts: "/api/social-posts" // 🆕 NUEVA RUTA
     },
   });
 });
@@ -128,12 +131,26 @@ app.get("/api", (req, res) => {
       "GET /api",
       "POST /api/auth/login",
       "GET /api/projects",
-      "GET /api/social-posts/project/:projectId" // 🆕 NUEVA RUTA
+      "GET /api/tasks",
+      "GET /api/contacts",
+      "GET /api/activities",
+      "GET /api/dashboard",
+      "GET /api/notifications",
+      "GET /api/social-posts/project/:projectId",
+      // 🆕 Nuevas rutas de chat
+      "GET /api/channels/project/:projectId",
+      "POST /api/channels",
+      "GET /api/messages/channel/:channelId",
+      "POST /api/messages"
     ],
   });
 });
 
-// Rutas de la API
+// =================================================================
+// RUTAS DE LA API
+// =================================================================
+
+// Rutas existentes
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -141,7 +158,11 @@ app.use('/api/contacts', contactRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/social-posts', socialPostRoutes); // 🆕 NUEVA RUTA
+app.use('/api/social-posts', socialPostRoutes);
+
+// 🆕 Rutas del chat
+app.use('/api/channels', channelRoutes);
+app.use('/api/messages', messageRoutes);
 
 // =================================================================
 // MANEJO DE ERRORES
@@ -177,24 +198,41 @@ app.use((err, req, res, next) => {
 // INICIAR SERVIDOR
 // =================================================================
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
-  console.log("=".repeat(50));
-  console.log("🚀 PLANIFICA+ SERVER INICIADO");
-  console.log("=".repeat(50));
-  console.log(`📡 Puerto: ${PORT}`);
-  console.log(`🌐 URL: http://localhost:${PORT}`);
-  console.log(`🔧 Entorno: ${process.env.NODE_ENV || "development"}`);
-  console.log(`⏰ Iniciado: ${new Date().toLocaleString("es-ES")}`);
-  console.log("=".repeat(50));
-  console.log(`🔔 Sistema de notificaciones activo`);
-  console.log(`📱 Socket.io configurado para tiempo real`);
-  console.log(`📅 Rutas de Social Posts disponibles`);
-  console.log("✅ Servidor listo para recibir requests");
-  console.log("✅ CORS configurado para métodos: GET, POST, PUT, DELETE, PATCH, OPTIONS");
-  console.log("");
-});
+const startServer = async () => {
+  try {
+    // Conectar a MongoDB primero
+    await connectDB();
+    
+    // Iniciar servidor HTTP (que incluye Socket.io)
+    server.listen(PORT, () => {
+      console.log("=".repeat(60));
+      console.log("🚀 PLANIFICA+ SERVER CON CHAT INICIADO");
+      console.log("=".repeat(60));
+      console.log(`📡 Puerto: ${PORT}`);
+      console.log(`🌐 URL: http://localhost:${PORT}`);
+      console.log(`🔧 Entorno: ${process.env.NODE_ENV || "development"}`);
+      console.log(`⏰ Iniciado: ${new Date().toLocaleString("es-ES")}`);
+      console.log("=".repeat(60));
+      console.log(`🔔 Sistema de notificaciones activo`);
+      console.log(`💬 Sistema de chat en tiempo real activo`);
+      console.log(`🔌 Socket.io configurado en puerto ${PORT}`);
+      console.log("✅ Servidor listo para recibir requests");
+      console.log("✅ CORS configurado para métodos: GET, POST, PUT, DELETE, PATCH, OPTIONS");
+      console.log("");
+      console.log("📋 Rutas de Chat disponibles:");
+      console.log("   GET  /api/channels/project/:projectId");
+      console.log("   POST /api/channels");
+      console.log("   GET  /api/messages/channel/:channelId");
+      console.log("   POST /api/messages");
+      console.log("");
+    });
+  } catch (error) {
+    console.error("❌ Error iniciando servidor:", error);
+    process.exit(1);
+  }
+};
 
 // Manejo de errores no capturados
 process.on('unhandledRejection', (err, promise) => {
@@ -221,5 +259,5 @@ process.on("SIGINT", () => {
   });
 });
 
-// Conectar a MongoDB
-connectDB();
+// Iniciar servidor
+startServer();

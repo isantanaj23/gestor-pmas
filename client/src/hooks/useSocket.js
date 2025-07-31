@@ -1,117 +1,367 @@
-// client/src/hooks/useSocket.js - VERSIÓN SIMPLE QUE FUNCIONA
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 
 const useSocket = () => {
   const { user, token, isAuthenticated, isLoading } = useAuth();
+  const [socket, setSocket] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  
+  // Referencias para evitar re-creaciones
   const socketRef = useRef(null);
   const listenersRef = useRef(new Map());
 
-  // Conectar socket cuando hay usuario autenticado
+  // =================================================================
+  // CONEXIÓN Y CONFIGURACIÓN INICIAL
+  // =================================================================
+
   useEffect(() => {
-    // No hacer nada si aún está cargando
-    if (isLoading) {
-      console.log('⏳ AuthContext aún cargando, esperando...');
-      return;
-    }
+    // Solo conectar si el usuario está autenticado y tenemos token
+    if (isAuthenticated && token && user && !isLoading) {
+      console.log('🔌 Iniciando conexión Socket.io...');
+      console.log('   hasToken:', !!token);
+      console.log('   hasUser:', !!user);
+      console.log('   isAuthenticated:', isAuthenticated);
 
-    if (isAuthenticated && token && user) {
-      console.log('✅ Usuario autenticado, conectando socket...');
-      console.log('👤 Usuario:', user.name || user.email);
-      
-      // Limpiar conexión previa
-      if (socketRef.current) {
-        console.log('🔄 Cerrando conexión previa...');
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
-      
       // Crear nueva conexión
-      console.log('🌐 Creando socket con configuración simple...');
-socketRef.current = io(process.env.REACT_APP_SOCKET_URL, {        
-  auth: { token },
-        transports: ['polling'], // Solo HTTP polling
-        timeout: 10000,
-        forceNew: true
+      const newSocket = io('http://localhost:3001', {
+        auth: {
+          token: token
+        },
+        transports: ['websocket', 'polling'],
+        autoConnect: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
       });
-
-      const socket = socketRef.current;
 
       // Event listeners básicos
-      socket.on('connect', () => {
-        console.log('🎉 ¡SOCKET CONECTADO!');
-        console.log('🆔 ID:', socket.id);
-        console.log('👤 Usuario:', user.name);
+      newSocket.on('connect', () => {
+        console.log('✅ Socket.io conectado:', newSocket.id);
+        setConnected(true);
+      });
+
+      newSocket.on('disconnect', (reason) => {
+        console.log('🔌 Socket.io desconectado:', reason);
+        setConnected(false);
+      });
+
+      newSocket.on('connect_error', (error) => {
+        console.error('❌ Error de conexión Socket.io:', error);
+        setConnected(false);
+      });
+
+      // =================================================================
+      // 🆕 EVENT LISTENERS PARA CHAT
+      // =================================================================
+
+      // Nuevo mensaje recibido
+      newSocket.on('new_message', (data) => {
+        console.log('📨 Nuevo mensaje recibido:', data);
         
-        // Solicitar contador de notificaciones
-        socket.emit('request_notification_count');
+        // Emitir evento personalizado que puede ser escuchado por componentes
+        window.dispatchEvent(new CustomEvent('newMessage', { 
+          detail: { 
+            channelId: data.channelId, 
+            message: data.message,
+            timestamp: data.timestamp
+          } 
+        }));
       });
 
-      socket.on('disconnect', (reason) => {
-        console.log('❌ Socket desconectado:', reason);
+      // Mensaje actualizado
+      newSocket.on('message_updated', (data) => {
+        console.log('✏️ Mensaje actualizado:', data);
+        
+        window.dispatchEvent(new CustomEvent('messageUpdated', { 
+          detail: { 
+            channelId: data.channelId, 
+            message: data.message,
+            timestamp: data.timestamp
+          } 
+        }));
       });
 
-      socket.on('connect_error', (error) => {
-        console.error('🚨 Error de conexión:', error.message);
+      // Mensaje eliminado
+      newSocket.on('message_deleted', (data) => {
+        console.log('🗑️ Mensaje eliminado:', data);
+        
+        window.dispatchEvent(new CustomEvent('messageDeleted', { 
+          detail: { 
+            channelId: data.channelId, 
+            messageId: data.messageId,
+            timestamp: data.timestamp
+          } 
+        }));
       });
 
-      // Listeners de notificaciones
-      socket.on('new_notification', (notification) => {
+      // Usuario se unió al canal
+      newSocket.on('user_joined_channel', (data) => {
+        console.log('👋 Usuario se unió al canal:', data);
+        
+        window.dispatchEvent(new CustomEvent('userJoinedChannel', { 
+          detail: data 
+        }));
+      });
+
+      // Usuario salió del canal
+      newSocket.on('user_left_channel', (data) => {
+        console.log('👋 Usuario salió del canal:', data);
+        
+        window.dispatchEvent(new CustomEvent('userLeftChannel', { 
+          detail: data 
+        }));
+      });
+
+      // Usuario está escribiendo
+      newSocket.on('typing_start', (data) => {
+        console.log('✍️ Usuario escribiendo:', data);
+        
+        window.dispatchEvent(new CustomEvent('typingStart', { 
+          detail: data 
+        }));
+      });
+
+      // Usuario dejó de escribir
+      newSocket.on('typing_stop', (data) => {
+        console.log('✍️ Usuario dejó de escribir:', data);
+        
+        window.dispatchEvent(new CustomEvent('typingStop', { 
+          detail: data 
+        }));
+      });
+
+      // Mensajes marcados como leídos
+      newSocket.on('messages_read', (data) => {
+        console.log('📖 Mensajes marcados como leídos:', data);
+        
+        window.dispatchEvent(new CustomEvent('messagesRead', { 
+          detail: data 
+        }));
+      });
+
+      // Nuevo canal creado
+      newSocket.on('channel_created', (data) => {
+        console.log('📢 Nuevo canal creado:', data);
+        
+        window.dispatchEvent(new CustomEvent('channelCreated', { 
+          detail: data 
+        }));
+      });
+
+      // Canal actualizado
+      newSocket.on('channel_updated', (data) => {
+        console.log('📢 Canal actualizado:', data);
+        
+        window.dispatchEvent(new CustomEvent('channelUpdated', { 
+          detail: data 
+        }));
+      });
+
+      // =================================================================
+      // EVENT LISTENERS EXISTENTES (Notificaciones, Proyectos, etc.)
+      // =================================================================
+
+      // Notificaciones
+      newSocket.on('new_notification', (notification) => {
         console.log('🔔 Nueva notificación:', notification);
+        addNotification(notification);
       });
 
-      socket.on('notification_count_updated', (data) => {
-        console.log('📊 Contador actualizado:', data.count);
+      // Actualizaciones de tareas
+      newSocket.on('task_updated', (data) => {
+        console.log('📋 Tarea actualizada:', data);
+        window.dispatchEvent(new CustomEvent('taskUpdated', { detail: data }));
       });
 
+      // Actualizaciones de proyectos
+      newSocket.on('project_updated', (data) => {
+        console.log('📂 Proyecto actualizado:', data);
+        window.dispatchEvent(new CustomEvent('projectUpdated', { detail: data }));
+      });
+
+      // Guardar referencias
+      socketRef.current = newSocket;
+      setSocket(newSocket);
+
+      // Cleanup al desmontar
       return () => {
-        console.log('🧹 Limpiando socket...');
-        if (socketRef.current) {
-          socketRef.current.disconnect();
-          socketRef.current = null;
-        }
+        console.log('🔌 Cerrando conexión Socket.io');
+        newSocket.close();
+        setSocket(null);
+        setConnected(false);
       };
     } else {
-      console.log('❌ No autenticado, no conectando socket');
+      // Limpiar conexión si no está autenticado
+      console.log('🔌 Usuario no autenticado, limpiando socket');
       console.log('   isAuthenticated:', isAuthenticated);
       console.log('   hasToken:', !!token);
       console.log('   hasUser:', !!user);
+      console.log('   isLoading:', isLoading);
       
-      // Desconectar si existe
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      
+      setSocket(null);
+      setConnected(false);
     }
   }, [isAuthenticated, token, user, isLoading]);
 
-  // Función para agregar listener
+  // =================================================================
+  // FUNCIONES DE UTILIDAD PARA NOTIFICACIONES
+  // =================================================================
+
+  const addNotification = useCallback((notification) => {
+    setNotifications(prev => [
+      { ...notification, timestamp: new Date() },
+      ...prev.slice(0, 9) // Mantener solo las últimas 10
+    ]);
+
+    // Auto-remover después de 5 segundos
+    setTimeout(() => {
+      removeNotification(notification.id);
+    }, 5000);
+  }, []);
+
+  const removeNotification = useCallback((notificationId) => {
+    setNotifications(prev => 
+      prev.filter(notif => notif.id !== notificationId)
+    );
+  }, []);
+
+  // =================================================================
+  // 🆕 FUNCIONES PARA CHAT
+  // =================================================================
+
+  // Unirse a un canal
+  const joinChannel = useCallback((channelId) => {
+    if (socket && connected) {
+      console.log(`💬 Uniéndose al canal: ${channelId}`);
+      socket.emit('join_channel', channelId);
+      return true;
+    } else {
+      console.log(`⏳ Socket no listo, no se puede unir al canal: ${channelId}`);
+      return false;
+    }
+  }, [socket, connected]);
+
+  // Salir de un canal
+  const leaveChannel = useCallback((channelId) => {
+    if (socket && connected) {
+      console.log(`👋 Saliendo del canal: ${channelId}`);
+      socket.emit('leave_channel', channelId);
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // Indicar que se está escribiendo
+  const startTyping = useCallback((channelId) => {
+    if (socket && connected) {
+      socket.emit('typing_start', { channelId });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // Indicar que se dejó de escribir
+  const stopTyping = useCallback((channelId) => {
+    if (socket && connected) {
+      socket.emit('typing_stop', { channelId });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // Marcar mensajes como leídos
+  const markMessagesAsRead = useCallback((channelId, messageIds = []) => {
+    if (socket && connected) {
+      socket.emit('mark_messages_read', { channelId, messageIds });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // Enviar mensaje (principalmente para notificar, el mensaje se envía por API)
+  const sendMessage = useCallback((channelId, content) => {
+    if (socket && connected) {
+      socket.emit('send_message', { channelId, content });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // =================================================================
+  // FUNCIONES EXISTENTES (Proyectos, Tareas, etc.)
+  // =================================================================
+
+  const joinProject = useCallback((projectId) => {
+    if (socket && connected) {
+      console.log(`👥 Uniéndose al proyecto: ${projectId}`);
+      socket.emit('join_project', projectId);
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  const leaveProject = useCallback((projectId) => {
+    if (socket && connected) {
+      socket.emit('leave_project', projectId);
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  const updateTask = useCallback((projectId, taskId, update, action = 'updated') => {
+    if (socket && connected) {
+      socket.emit('task_update', { projectId, taskId, update, action });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  const updateProject = useCallback((projectId, update, action = 'updated') => {
+    if (socket && connected) {
+      socket.emit('project_update', { projectId, update, action });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // =================================================================
+  // FUNCIONES GENÉRICAS
+  // =================================================================
+
+  const emit = useCallback((event, data) => {
+    if (socket && connected) {
+      socket.emit(event, data);
+      console.log(`📤 Emit exitoso: ${event}`);
+      return true;
+    } else {
+      console.log(`⏳ Socket no listo, emit diferido: ${event}`);
+      return false;
+    }
+  }, [socket, connected]);
+
   const on = useCallback((event, callback) => {
-    if (socketRef.current && socketRef.current.connected) {
+    if (socket) {
       console.log(`🎧 Agregando listener: ${event}`);
-      socketRef.current.on(event, callback);
+      socket.on(event, callback);
       
       // Guardar referencia
       if (!listenersRef.current.has(event)) {
         listenersRef.current.set(event, []);
       }
       listenersRef.current.get(event).push(callback);
-    } else {
-      console.log(`⏳ Socket no listo, listener diferido: ${event}`);
-      // Agregar cuando se conecte
-      if (socketRef.current) {
-        socketRef.current.on('connect', () => {
-          socketRef.current.on(event, callback);
-        });
-      }
     }
-  }, []);
+  }, [socket]);
 
-  // Función para remover listener
   const off = useCallback((event, callback) => {
-    if (socketRef.current) {
-      socketRef.current.off(event, callback);
+    if (socket) {
+      socket.off(event, callback);
       
       const listeners = listenersRef.current.get(event);
       if (listeners) {
@@ -121,82 +371,40 @@ socketRef.current = io(process.env.REACT_APP_SOCKET_URL, {
         }
       }
     }
-  }, []);
+  }, [socket]);
 
-  // Función para emitir eventos
-  const emit = useCallback((event, data) => {
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit(event, data);
-      console.log(`📤 Emit exitoso: ${event}`);
-      return true;
-    } else {
-      console.log(`⏳ Socket no listo, emit diferido: ${event}`);
-      // Emitir cuando se conecte
-      if (socketRef.current) {
-        socketRef.current.on('connect', () => {
-          socketRef.current.emit(event, data);
-          console.log(`📤 Emit diferido exitoso: ${event}`);
-        });
-      }
-      return false;
-    }
-  }, []);
-
-  // Funciones de conveniencia
-  const joinProject = useCallback((projectId) => {
-    console.log(`👥 Uniéndose al proyecto: ${projectId}`);
-    return emit('join_project', projectId);
-  }, [emit]);
-
-  const leaveProject = useCallback((projectId) => {
-    return emit('leave_project', projectId);
-  }, [emit]);
-
-  const updateTask = useCallback((projectId, taskId, update, action = 'updated') => {
-    return emit('task_update', { projectId, taskId, update, action });
-  }, [emit]);
-
-  const newComment = useCallback((projectId, taskId, comment) => {
-    return emit('new_comment', { projectId, taskId, comment });
-  }, [emit]);
-
-  const updateProject = useCallback((projectId, update, action = 'updated') => {
-    return emit('project_update', { projectId, update, action });
-  }, [emit]);
-
-  const updateContact = useCallback((contactId, update, action = 'updated') => {
-    return emit('contact_update', { contactId, update, action });
-  }, [emit]);
-
-  // Cleanup al desmontar
-  useEffect(() => {
-    return () => {
-      const currentListeners = listenersRef.current;
-      const currentSocket = socketRef.current;
-      
-      for (const [event, callbacks] of currentListeners) {
-        callbacks.forEach(callback => {
-          if (currentSocket) {
-            currentSocket.off(event, callback);
-          }
-        });
-      }
-      currentListeners.clear();
-    };
-  }, []);
+  // =================================================================
+  // RETORNO DEL HOOK
+  // =================================================================
 
   return {
-    socket: socketRef.current,
-    connected: socketRef.current?.connected || false,
-    on,
-    off,
-    emit,
+    // Estado básico
+    socket,
+    connected,
+    notifications,
+    
+    // Funciones de notificaciones
+    addNotification,
+    removeNotification,
+    
+    // 🆕 Funciones de chat
+    joinChannel,
+    leaveChannel,
+    startTyping,
+    stopTyping,
+    markMessagesAsRead,
+    sendMessage,
+    
+    // Funciones de proyectos
     joinProject,
     leaveProject,
     updateTask,
-    newComment,
     updateProject,
-    updateContact
+    
+    // Funciones genéricas
+    emit,
+    on,
+    off
   };
 };
 

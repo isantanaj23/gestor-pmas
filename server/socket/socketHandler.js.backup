@@ -1,0 +1,497 @@
+// server/socket/socketHandler.js
+const socketIo = require('socket.io');
+const jwt = require('jsonwebtoken');
+
+class SocketHandler {
+  constructor(server) {
+    this.io = socketIo(server, {
+      cors: {
+        origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+        methods: ["GET", "POST"],
+        credentials: true
+      }
+    });
+
+    this.connectedUsers = new Map(); // userId -> socketId
+    this.userSockets = new Map(); // userId -> socket instance
+    this.setupMiddleware();
+    this.setupEventHandlers();
+    
+    // Hacer disponible globalmente para usar en otros módulos
+    global.socketHandler = this;
+    
+    console.log('🚀 Socket.io inicializado con chat y notificaciones');
+  }
+
+  // Middleware de autenticación para sockets
+  setupMiddleware() {
+    this.io.use(async (socket, next) => {
+      try {
+        const token = socket.handshake.auth.token;
+        
+        if (!token) {
+          return next(new Error('No token provided'));
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const User = require('../models/User');
+        const user = await User.findById(decoded.id).select('-password');
+        
+        if (!user) {
+          return next(new Error('User not found'));
+        }
+
+        socket.userId = user._id.toString();
+        socket.user = user;
+        next();
+      } catch (error) {
+        next(new Error('Authentication failed'));
+      }
+    });
+  }
+
+  // Configurar event handlers
+  setupEventHandlers() {
+    this.io.on('connection', (socket) => {
+      console.log(`🔌 Usuario conectado: ${socket.user.name} (${socket.id})`);
+      
+      // Registrar usuario conectado
+      this.connectedUsers.set(socket.userId, socket.id);
+      this.userSockets.set(socket.userId, socket);
+      
+      // Unirse a sala personal del usuario para notificaciones
+      socket.join(`user_${socket.userId}`);
+      
+      // Unirse a salas de proyectos del usuario
+      this.joinUserRooms(socket);
+
+      // =================================================================
+      // 🆕 EVENT HANDLERS PARA CHAT
+      // =================================================================
+      
+      // Unirse a un canal específico
+      socket.on('join_channel', (channelId) => this.handleJoinChannel(socket, channelId));
+      
+      // Salir de un canal específico
+      socket.on('leave_channel', (channelId) => this.handleLeaveChannel(socket, channelId));
+      
+      // Enviar mensaje (se maneja principalmente por API, pero podemos notificar aquí)
+      socket.on('send_message', (data) => this.handleSendMessage(socket, data));
+      
+      // Usuario está escribiendo
+      socket.on('typing_start', (data) => this.handleTypingStart(socket, data));
+      
+      // Usuario dejó de escribir
+      socket.on('typing_stop', (data) => this.handleTypingStop(socket, data));
+      
+      // Marcar mensajes como leídos
+      socket.on('mark_messages_read', (data) => this.handleMarkMessagesRead(socket, data));
+
+      // =================================================================
+      // EVENT HANDLERS EXISTENTES (Proyectos, Tareas, etc.)
+      // =================================================================
+      
+      socket.on('join_project', (projectId) => this.handleJoinProject(socket, projectId));
+      socket.on('leave_project', (projectId) => this.handleLeaveProject(socket, projectId));
+      socket.on('task_update', (data) => this.handleTaskUpdate(socket, data));
+      socket.on('new_comment', (data) => this.handleNewComment(socket, data));
+      socket.on('project_update', (data) => this.handleProjectUpdate(socket, data));
+      socket.on('contact_update', (data) => this.handleContactUpdate(socket, data));
+
+      // Notificaciones
+      socket.on('mark_notification_read', (notificationId) => this.handleMarkNotificationRead(socket, notificationId));
+      socket.on('get_notifications', () => this.handleGetNotifications(socket));
+
+      // Desconexión
+      socket.on('disconnect', () => this.handleDisconnect(socket));
+    });
+  }
+
+  // =================================================================
+  // 🆕 HANDLERS PARA CHAT
+  // =================================================================
+
+  async handleJoinChannel(socket, channelId) {
+    try {
+      console.log(`💬 Usuario ${socket.user.name} uniéndose al canal: ${channelId}`);
+      
+      // Verificar que el usuario tiene acceso al canal
+      const Channel = require('../models/Channel');
+      const channel = await Channel.findById(channelId);
+      
+      if (!channel) {
+        socket.emit('error', { message: 'Canal no encontrado' });
+        return;
+      }
+      
+      // Verificar acceso
+      const hasAccess = channel.type === 'channel' 
+        ? (!channel.isPrivate || channel.members.some(member => 
+            member.user.toString() === socket.userId))
+        : channel.participants.some(participant => 
+            participant.toString() === socket.userId);
+      
+      if (!hasAccess) {
+        socket.emit('error', { message: 'No tienes acceso a este canal' });
+        return;
+      }
+      
+      // Unirse al room del canal
+      socket.join(`channel_${channelId}`);
+      
+      // Notificar a otros en el canal que el usuario se unió
+      socket.to(`channel_${channelId}`).emit('user_joined_channel', {
+        channelId,
+        user: {
+          id: socket.userId,
+          name: socket.user.name,
+          avatar: socket.user.avatar
+        },
+        timestamp: new Date()
+      });
+      
+      console.log(`✅ Usuario ${socket.user.name} unido al canal ${channelId}`);
+      
+    } catch (error) {
+      console.error('Error uniendo usuario al canal:', error);
+      socket.emit('error', { message: 'Error uniéndose al canal' });
+    }
+  }
+
+  async handleLeaveChannel(socket, channelId) {
+    try {
+      console.log(`👋 Usuario ${socket.user.name} saliendo del canal: ${channelId}`);
+      
+      // Salir del room del canal
+      socket.leave(`channel_${channelId}`);
+      
+      // Notificar a otros en el canal que el usuario se fue
+      socket.to(`channel_${channelId}`).emit('user_left_channel', {
+        channelId,
+        user: {
+          id: socket.userId,
+          name: socket.user.name,
+          avatar: socket.user.avatar
+        },
+        timestamp: new Date()
+      });
+      
+    } catch (error) {
+      console.error('Error saliendo del canal:', error);
+    }
+  }
+
+  async handleSendMessage(socket, data) {
+    try {
+      const { channelId, content } = data;
+      
+      console.log(`📝 Usuario ${socket.user.name} enviando mensaje a canal: ${channelId}`);
+      
+      // Este evento es principalmente informativo, el mensaje se crea por API
+      // Pero podemos usar esto para notificaciones en tiempo real adicionales
+      
+      // Detener indicador de "escribiendo" si estaba activo
+      socket.to(`channel_${channelId}`).emit('typing_stop', {
+        channelId,
+        userId: socket.userId
+      });
+      
+    } catch (error) {
+      console.error('Error en handleSendMessage:', error);
+    }
+  }
+
+  handleTypingStart(socket, data) {
+    const { channelId } = data;
+    
+    // Notificar a otros usuarios en el canal que este usuario está escribiendo
+    socket.to(`channel_${channelId}`).emit('typing_start', {
+      channelId,
+      userId: socket.userId,
+      userName: socket.user.name,
+      timestamp: new Date()
+    });
+    
+    // Auto-detener después de 3 segundos si no hay actividad
+    setTimeout(() => {
+      socket.to(`channel_${channelId}`).emit('typing_stop', {
+        channelId,
+        userId: socket.userId
+      });
+    }, 3000);
+  }
+
+  handleTypingStop(socket, data) {
+    const { channelId } = data;
+    
+    socket.to(`channel_${channelId}`).emit('typing_stop', {
+      channelId,
+      userId: socket.userId
+    });
+  }
+
+  async handleMarkMessagesRead(socket, data) {
+    try {
+      const { channelId, messageIds } = data;
+      
+      // Notificar a otros usuarios que estos mensajes fueron leídos
+      socket.to(`channel_${channelId}`).emit('messages_read', {
+        channelId,
+        messageIds: messageIds || [],
+        readBy: {
+          id: socket.userId,
+          name: socket.user.name
+        },
+        timestamp: new Date()
+      });
+      
+    } catch (error) {
+      console.error('Error marcando mensajes como leídos:', error);
+    }
+  }
+
+  // =================================================================
+  // MÉTODOS PARA EMITIR EVENTOS DE CHAT (llamados desde las APIs)
+  // =================================================================
+
+  // Emitir nuevo mensaje a todos los usuarios del canal
+  emitNewMessage(channelId, message) {
+    console.log(`📢 Emitiendo nuevo mensaje en canal: ${channelId}`);
+    
+    this.io.to(`channel_${channelId}`).emit('new_message', {
+      channelId,
+      message,
+      timestamp: new Date()
+    });
+  }
+
+  // Emitir mensaje actualizado
+  emitMessageUpdated(channelId, message) {
+    this.io.to(`channel_${channelId}`).emit('message_updated', {
+      channelId,
+      message,
+      timestamp: new Date()
+    });
+  }
+
+  // Emitir mensaje eliminado
+  emitMessageDeleted(channelId, messageId) {
+    this.io.to(`channel_${channelId}`).emit('message_deleted', {
+      channelId,
+      messageId,
+      timestamp: new Date()
+    });
+  }
+
+  // Emitir nuevo canal creado
+  emitChannelCreated(projectId, channel) {
+    this.io.to(`project_${projectId}`).emit('channel_created', {
+      projectId,
+      channel,
+      timestamp: new Date()
+    });
+  }
+
+  // Emitir canal actualizado
+  emitChannelUpdated(projectId, channel) {
+    this.io.to(`project_${projectId}`).emit('channel_updated', {
+      projectId,
+      channel,
+      timestamp: new Date()
+    });
+  }
+
+  // =================================================================
+  // HANDLERS EXISTENTES (mantenidos igual)
+  // =================================================================
+
+  async joinUserRooms(socket) {
+    try {
+      const Project = require('../models/Project');
+      
+      const projects = await Project.find({
+        $or: [
+          { owner: socket.userId },
+          { 'team.user': socket.userId }
+        ]
+      });
+
+      for (const project of projects) {
+        socket.join(`project_${project._id}`);
+        console.log(`🏠 Usuario ${socket.user.name} unido a proyecto: ${project.name}`);
+      }
+    } catch (error) {
+      console.error('Error uniendo usuario a rooms:', error);
+    }
+  }
+
+  handleJoinProject(socket, projectId) {
+    socket.join(`project_${projectId}`);
+    console.log(`🏠 Usuario ${socket.user.name} se unió al proyecto: ${projectId}`);
+  }
+
+  handleLeaveProject(socket, projectId) {
+    socket.leave(`project_${projectId}`);
+    console.log(`🚪 Usuario ${socket.user.name} salió del proyecto: ${projectId}`);
+  }
+
+  handleTaskUpdate(socket, data) {
+    const { projectId, taskId, update, action } = data;
+    
+    socket.to(`project_${projectId}`).emit('task_updated', {
+      taskId,
+      update,
+      action,
+      updatedBy: {
+        id: socket.userId,
+        name: socket.user.name,
+        avatar: socket.user.avatar
+      },
+      timestamp: new Date()
+    });
+    
+    console.log(`📋 Tarea actualizada en proyecto ${projectId}: ${taskId}`);
+  }
+
+  handleNewComment(socket, data) {
+    const { projectId, taskId, comment } = data;
+    
+    socket.to(`project_${projectId}`).emit('new_comment', {
+      taskId,
+      comment: {
+        ...comment,
+        author: {
+          id: socket.userId,
+          name: socket.user.name,
+          avatar: socket.user.avatar
+        }
+      },
+      timestamp: new Date()
+    });
+  }
+
+  handleProjectUpdate(socket, data) {
+    const { projectId, update, action } = data;
+    
+    socket.to(`project_${projectId}`).emit('project_updated', {
+      projectId,
+      update,
+      action,
+      updatedBy: {
+        id: socket.userId,
+        name: socket.user.name,
+        avatar: socket.user.avatar
+      },
+      timestamp: new Date()
+    });
+  }
+
+  handleContactUpdate(socket, data) {
+    const { contactId, update, action } = data;
+    
+    socket.to(`user_${socket.userId}`).emit('contact_updated', {
+      contactId,
+      update,
+      action,
+      timestamp: new Date()
+    });
+  }
+
+  handleMarkNotificationRead(socket, notificationId) {
+    console.log(`📖 Marcando notificación como leída: ${notificationId}`);
+    
+    socket.emit('notification_read', {
+      notificationId,
+      timestamp: new Date()
+    });
+  }
+
+  async handleGetNotifications(socket) {
+    try {
+      const Notification = require('../models/Notification');
+      
+      const notifications = await Notification.find({
+        recipient: socket.userId,
+        isRead: false
+      })
+      .populate('sender', 'name avatar')
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+      socket.emit('notifications_list', {
+        notifications,
+        count: notifications.length
+      });
+    } catch (error) {
+      console.error('Error obteniendo notificaciones:', error);
+    }
+  }
+
+  handleDisconnect(socket) {
+    console.log(`🔌 Usuario desconectado: ${socket.user?.name} (${socket.id})`);
+    
+    // Remover de usuarios conectados
+    if (socket.userId) {
+      this.connectedUsers.delete(socket.userId);
+      this.userSockets.delete(socket.userId);
+    }
+  }
+
+  // =================================================================
+  // MÉTODOS DE NOTIFICACIÓN (existentes, mantenidos)
+  // =================================================================
+
+  async emitNotification(userId, notification) {
+    const socketId = this.connectedUsers.get(userId);
+    if (socketId) {
+      this.io.to(`user_${userId}`).emit('new_notification', notification);
+      console.log(`🔔 Notificación enviada a ${userId}: ${notification.title}`);
+    }
+  }
+
+  async notifyTaskAssignment(userId, task, assigner) {
+    try {
+      const Notification = require('../models/Notification');
+      
+      const notification = await Notification.createNotification({
+        recipient: userId,
+        sender: assigner._id,
+        type: 'task_assigned',
+        title: 'Nueva tarea asignada',
+        message: `${assigner.name} te ha asignado: "${task.title}"`,
+        data: {
+          taskId: task._id,
+          projectId: task.project,
+          url: `/projects/${task.project}`
+        },
+        priority: 'high'
+      });
+
+      this.emitNotification(userId, notification);
+      console.log(`📋 Notificación de tarea enviada a ${userId}`);
+    } catch (error) {
+      console.error('Error enviando notificación de tarea:', error);
+    }
+  }
+
+  // Obtener usuarios conectados
+  getConnectedUsers() {
+    return Array.from(this.connectedUsers.keys());
+  }
+
+  // Verificar si un usuario está conectado
+  isUserConnected(userId) {
+    return this.connectedUsers.has(userId.toString());
+  }
+
+  // Obtener estadísticas de conexión
+  getConnectionStats() {
+    return {
+      connectedUsers: this.connectedUsers.size,
+      totalRooms: this.io.sockets.adapter.rooms.size,
+      socketCount: this.io.engine.clientsCount
+    };
+  }
+}
+
+module.exports = SocketHandler;
