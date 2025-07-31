@@ -1,638 +1,695 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+// client/src/hooks/useSocket.js - HOOK COMPLETO INTEGRADO
+
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 
 const useSocket = () => {
-  const { user, token, isAuthenticated, isLoading } = useAuth();
+  const { token, user } = useAuth();
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [notifications, setNotifications] = useState([]);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
   
-  // 🆕 Estados para usuarios en línea
-  const [onlineUsers, setOnlineUsers] = useState(new Map());
-  const [projectOnlineUsers, setProjectOnlineUsers] = useState(new Map()); // projectId -> users array
+  // 🗺️ Estados para tracking
+  const [projectOnlineUsers, setProjectOnlineUsers] = useState(new Map());
+  const [userProjects, setUserProjects] = useState(new Set());
+  const [currentProject, setCurrentProject] = useState(null);
+  const [currentChannel, setCurrentChannel] = useState(null);
   
-  // Referencias para evitar re-creaciones
+  // 📊 Estados para estadísticas
+  const [connectionStats, setConnectionStats] = useState({
+    connectTime: null,
+    reconnectCount: 0,
+    lastPing: null,
+    latency: null
+  });
+
   const socketRef = useRef(null);
-  const listenersRef = useRef(new Map());
+  const reconnectTimeoutRef = useRef(null);
+  const pingIntervalRef = useRef(null);
 
   // =================================================================
-  // CONEXIÓN Y CONFIGURACIÓN INICIAL
+  // 🔌 CONFIGURACIÓN Y CONEXIÓN DEL SOCKET
   // =================================================================
 
   useEffect(() => {
-    // Solo conectar si el usuario está autenticado y tenemos token
-    if (isAuthenticated && token && user && !isLoading) {
-      console.log('🔌 Iniciando conexión Socket.io...');
-      console.log('   hasToken:', !!token);
-      console.log('   hasUser:', !!user);
-      console.log('   isAuthenticated:', isAuthenticated);
+    if (!token || !user) {
+      console.log('🔌 SOCKET HOOK: No hay token o usuario, no conectando');
+      return;
+    }
 
-      // Crear nueva conexión
-      const newSocket = io('http://localhost:3001', {
-        auth: {
-          token: token
-        },
-        transports: ['websocket', 'polling'],
-        autoConnect: true,
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-      });
+    console.log('🔌 SOCKET HOOK: Inicializando conexión para usuario:', user.name);
+    
+    // Crear conexión Socket.IO
+    const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
+      auth: {
+        token: token
+      },
+      transports: ['websocket', 'polling'],
+      forceNew: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000
+    });
 
-      // Event listeners básicos
-      newSocket.on('connect', () => {
-        console.log('✅ Socket.io conectado:', newSocket.id);
-        setConnected(true);
-      });
+    socketRef.current = newSocket;
+    setSocket(newSocket);
 
-      newSocket.on('disconnect', (reason) => {
-        console.log('🔌 Socket.io desconectado:', reason);
-        setConnected(false);
-      });
+    // =================================================================
+    // 🎧 EVENT LISTENERS DE CONEXIÓN
+    // =================================================================
 
-      newSocket.on('connect_error', (error) => {
-        console.error('❌ Error de conexión Socket.io:', error);
-        setConnected(false);
-      });
+    newSocket.on('connect', () => {
+      console.log('✅ SOCKET HOOK: Conectado exitosamente - ID:', newSocket.id);
+      setConnected(true);
+      setReconnecting(false);
+      setConnectionError(null);
+      setConnectionStats(prev => ({
+        ...prev,
+        connectTime: new Date(),
+        reconnectCount: prev.reconnectCount + (prev.connectTime ? 1 : 0)
+      }));
 
-      // =================================================================
-      // 🆕 EVENT LISTENERS PARA USUARIOS EN LÍNEA
-      // =================================================================
+      // Iniciar ping para medir latencia
+      startPingInterval(newSocket);
+    });
 
-      // Lista de usuarios en línea de un proyecto
-      newSocket.on('project_online_users', (data) => {
-        console.log('👥 Usuarios en línea del proyecto recibidos:', data);
-        
-        const { projectId, users } = data;
-        
-        // Actualizar mapa de usuarios en línea por proyecto
+    newSocket.on('disconnect', (reason) => {
+      console.log('❌ SOCKET HOOK: Desconectado - Razón:', reason);
+      setConnected(false);
+      
+      if (reason === 'io server disconnect') {
+        // Desconexión forzada por el servidor
+        setConnectionError('Desconectado por el servidor');
+      } else if (reason === 'io client disconnect') {
+        // Desconexión manual
+        setConnectionError(null);
+      } else {
+        // Desconexión por red u otros problemas
+        setConnectionError('Conexión perdida');
+        setReconnecting(true);
+      }
+
+      // Limpiar ping interval
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+    });
+
+    newSocket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 SOCKET HOOK: Reconectado después de', attemptNumber, 'intentos');
+      setReconnecting(false);
+      setConnectionError(null);
+    });
+
+    newSocket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('🔄 SOCKET HOOK: Intento de reconexión', attemptNumber);
+      setReconnecting(true);
+    });
+
+    newSocket.on('reconnect_failed', () => {
+      console.log('❌ SOCKET HOOK: Falló la reconexión');
+      setReconnecting(false);
+      setConnectionError('No se pudo reconectar');
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('❌ SOCKET HOOK: Error de conexión:', error.message);
+      setConnectionError(`Error de conexión: ${error.message}`);
+      setConnected(false);
+    });
+
+    // =================================================================
+    // 🎧 EVENT LISTENERS PARA PROYECTOS Y USUARIOS
+    // =================================================================
+
+    newSocket.on('project_online_users', (data) => {
+      console.log('👥 SOCKET HOOK: Usuarios en línea actualizados:', data);
+      if (data.projectId && data.users) {
         setProjectOnlineUsers(prev => {
           const newMap = new Map(prev);
-          newMap.set(projectId, users || []);
+          newMap.set(data.projectId, data.users);
           return newMap;
         });
-
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('projectOnlineUsers', { 
-          detail: { projectId, users: users || [] }
+        
+        // Emitir evento personalizado para que los componentes puedan escuchar
+        window.dispatchEvent(new CustomEvent('projectOnlineUsers', {
+          detail: data
         }));
-      });
+      }
+    });
 
-      // Usuario se unió al proyecto
-      newSocket.on('user_joined_project', (data) => {
-        console.log('👋 Usuario se unió al proyecto:', data);
-        
-        const { projectId, userId, userName, userAvatar } = data;
-        
-        // Actualizar usuarios del proyecto
+    newSocket.on('user_joined_project', (data) => {
+      console.log('👋 SOCKET HOOK: Usuario se unió al proyecto:', data);
+      
+      // Actualizar lista de usuarios en línea
+      if (data.projectId) {
         setProjectOnlineUsers(prev => {
           const newMap = new Map(prev);
-          const currentUsers = newMap.get(projectId) || [];
-          const userExists = currentUsers.some(u => u.userId === userId);
+          const currentUsers = newMap.get(data.projectId) || [];
           
+          // Agregar usuario si no existe
+          const userExists = currentUsers.some(u => u.userId === data.userId);
           if (!userExists) {
             const updatedUsers = [...currentUsers, {
-              userId,
-              userName,
-              userAvatar,
+              userId: data.userId,
+              userName: data.userName,
+              userRole: data.userRole,
               isOnline: true,
-              connectedAt: new Date()
+              connectedAt: new Date(data.timestamp)
             }];
-            newMap.set(projectId, updatedUsers);
+            newMap.set(data.projectId, updatedUsers);
           }
           
           return newMap;
         });
-
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('userJoinedProject', { 
-          detail: data 
-        }));
-      });
-
-      // Usuario salió del proyecto
-      newSocket.on('user_left_project', (data) => {
-        console.log('👋 Usuario salió del proyecto:', data);
-        
-        const { projectId, userId } = data;
-        
-        // Actualizar usuarios del proyecto
-        setProjectOnlineUsers(prev => {
-          const newMap = new Map(prev);
-          const currentUsers = newMap.get(projectId) || [];
-          const updatedUsers = currentUsers.filter(u => u.userId !== userId);
-          newMap.set(projectId, updatedUsers);
-          return newMap;
-        });
-
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('userLeftProject', { 
-          detail: data 
-        }));
-      });
-
-      // 🆕 Miembro removido del proyecto
-      newSocket.on('member_removed', (data) => {
-        console.log('🚫 Miembro removido del proyecto:', data);
-        
-        const { projectId, removedMemberId } = data;
-        
-        // Actualizar usuarios en línea
-        setProjectOnlineUsers(prev => {
-          const newMap = new Map(prev);
-          const currentUsers = newMap.get(projectId) || [];
-          const updatedUsers = currentUsers.filter(u => u.userId !== removedMemberId);
-          newMap.set(projectId, updatedUsers);
-          return newMap;
-        });
-
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('memberRemoved', { 
-          detail: data 
-        }));
-      });
-
-      // 🆕 Usuario fue removido del proyecto
-      newSocket.on('removed_from_project', (data) => {
-        console.log('🚫 Fuiste removido del proyecto:', data);
-        
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('removedFromProject', { 
-          detail: data 
-        }));
-      });
-
-      // 🆕 Usuario fue agregado al proyecto
-      newSocket.on('added_to_project', (data) => {
-        console.log('✅ Fuiste agregado al proyecto:', data);
-        
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('addedToProject', { 
-          detail: data 
-        }));
-      });
-
-      // 🆕 Nuevo miembro agregado al proyecto
-      newSocket.on('member_added', (data) => {
-        console.log('👥 Nuevo miembro agregado al proyecto:', data);
-        
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('memberAdded', { 
-          detail: data 
-        }));
-      });
-
-      // =================================================================
-      // EVENT LISTENERS PARA CHAT (EXISTENTES)
-      // =================================================================
-
-      // Nuevo mensaje recibido
-      newSocket.on('new_message', (data) => {
-        console.log('📨 Nuevo mensaje recibido:', data);
-        
-        // Emitir evento personalizado que puede ser escuchado por componentes
-        window.dispatchEvent(new CustomEvent('newMessage', { 
-          detail: { 
-            channelId: data.channelId, 
-            message: data.message,
-            timestamp: data.timestamp
-          } 
-        }));
-      });
-
-      // 🆕 Nuevo mensaje global (para notificaciones)
-      newSocket.on('new_message_global', (data) => {
-        console.log('📨 Nuevo mensaje global recibido:', data);
-        
-        // Emitir evento personalizado
-        window.dispatchEvent(new CustomEvent('newMessageGlobal', { 
-          detail: data
-        }));
-      });
-
-      // Mensaje actualizado
-      newSocket.on('message_updated', (data) => {
-        console.log('✏️ Mensaje actualizado:', data);
-        
-        window.dispatchEvent(new CustomEvent('messageUpdated', { 
-          detail: { 
-            channelId: data.channelId, 
-            message: data.message,
-            timestamp: data.timestamp
-          } 
-        }));
-      });
-
-      // Mensaje eliminado
-      newSocket.on('message_deleted', (data) => {
-        console.log('🗑️ Mensaje eliminado:', data);
-        
-        window.dispatchEvent(new CustomEvent('messageDeleted', { 
-          detail: { 
-            channelId: data.channelId, 
-            messageId: data.messageId,
-            timestamp: data.timestamp
-          } 
-        }));
-      });
-
-      // Usuario se unió al canal
-      newSocket.on('user_joined_channel', (data) => {
-        console.log('👋 Usuario se unió al canal:', data);
-        
-        window.dispatchEvent(new CustomEvent('userJoinedChannel', { 
-          detail: data 
-        }));
-      });
-
-      // Usuario salió del canal
-      newSocket.on('user_left_channel', (data) => {
-        console.log('👋 Usuario salió del canal:', data);
-        
-        window.dispatchEvent(new CustomEvent('userLeftChannel', { 
-          detail: data 
-        }));
-      });
-
-      // Usuario está escribiendo
-      newSocket.on('typing_start', (data) => {
-        console.log('✍️ Usuario escribiendo:', data);
-        
-        window.dispatchEvent(new CustomEvent('typingStart', { 
-          detail: data 
-        }));
-      });
-
-      // Usuario dejó de escribir
-      newSocket.on('typing_stop', (data) => {
-        console.log('✍️ Usuario dejó de escribir:', data);
-        
-        window.dispatchEvent(new CustomEvent('typingStop', { 
-          detail: data 
-        }));
-      });
-
-      // Mensajes marcados como leídos
-      newSocket.on('messages_read', (data) => {
-        console.log('📖 Mensajes marcados como leídos:', data);
-        
-        window.dispatchEvent(new CustomEvent('messagesRead', { 
-          detail: data 
-        }));
-      });
-
-      // Nuevo canal creado
-      newSocket.on('channel_created', (data) => {
-        console.log('📢 Nuevo canal creado:', data);
-        
-        window.dispatchEvent(new CustomEvent('channelCreated', { 
-          detail: data 
-        }));
-      });
-
-      // Canal actualizado
-      newSocket.on('channel_updated', (data) => {
-        console.log('📢 Canal actualizado:', data);
-        
-        window.dispatchEvent(new CustomEvent('channelUpdated', { 
-          detail: data 
-        }));
-      });
-
-      // =================================================================
-      // EVENT LISTENERS EXISTENTES (Notificaciones, Proyectos, etc.)
-      // =================================================================
-
-      // Notificaciones
-      newSocket.on('new_notification', (notification) => {
-        console.log('🔔 Nueva notificación:', notification);
-        addNotification(notification);
-      });
-
-      // Actualizaciones de tareas
-      newSocket.on('task_updated', (data) => {
-        console.log('📋 Tarea actualizada:', data);
-        window.dispatchEvent(new CustomEvent('taskUpdated', { detail: data }));
-      });
-
-      // Actualizaciones de proyectos
-      newSocket.on('project_updated', (data) => {
-        console.log('📂 Proyecto actualizado:', data);
-        window.dispatchEvent(new CustomEvent('projectUpdated', { detail: data }));
-      });
-
-      // Confirmaciones
-      newSocket.on('project_joined', (data) => {
-        console.log('✅ Confirmación de unión al proyecto:', data);
-      });
-
-      newSocket.on('channel_joined', (data) => {
-        console.log('✅ Confirmación de unión al canal:', data);
-      });
-
-      // Manejo de errores
-      newSocket.on('error', (error) => {
-        console.error('❌ Error del socket:', error);
-        // Puedes mostrar una notificación al usuario
-        addNotification({
-          id: Date.now(),
-          type: 'error',
-          message: error.message || 'Error de conexión'
-        });
-      });
-
-      // Guardar referencias
-      socketRef.current = newSocket;
-      setSocket(newSocket);
-
-      // Cleanup al desmontar
-      return () => {
-        console.log('🔌 Cerrando conexión Socket.io');
-        newSocket.close();
-        setSocket(null);
-        setConnected(false);
-        setOnlineUsers(new Map());
-        setProjectOnlineUsers(new Map());
-      };
-    } else {
-      // Limpiar conexión si no está autenticado
-      console.log('🔌 Usuario no autenticado, limpiando socket');
-      
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
       }
       
+      // Emitir evento personalizado
+      window.dispatchEvent(new CustomEvent('userJoinedProject', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('user_left_project', (data) => {
+      console.log('👋 SOCKET HOOK: Usuario salió del proyecto:', data);
+      
+      // Actualizar lista de usuarios en línea
+      if (data.projectId) {
+        setProjectOnlineUsers(prev => {
+          const newMap = new Map(prev);
+          const currentUsers = newMap.get(data.projectId) || [];
+          const updatedUsers = currentUsers.filter(u => u.userId !== data.userId);
+          newMap.set(data.projectId, updatedUsers);
+          return newMap;
+        });
+      }
+      
+      // Emitir evento personalizado
+      window.dispatchEvent(new CustomEvent('userLeftProject', {
+        detail: data
+      }));
+    });
+
+    // =================================================================
+    // 🎧 EVENT LISTENERS PARA MENSAJES
+    // =================================================================
+
+    newSocket.on('new_message_global', (data) => {
+      console.log('📨 SOCKET HOOK: Nuevo mensaje global:', data);
+      
+      // Emitir evento personalizado para que los componentes puedan escuchar
+      window.dispatchEvent(new CustomEvent('newMessageGlobal', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('new_message', (data) => {
+      console.log('📨 SOCKET HOOK: Nuevo mensaje en canal:', data);
+      
+      // Emitir evento personalizado
+      window.dispatchEvent(new CustomEvent('newMessage', {
+        detail: data
+      }));
+    });
+
+    // =================================================================
+    // 🎧 EVENT LISTENERS PARA CANALES
+    // =================================================================
+
+    newSocket.on('channel_created', (data) => {
+      console.log('📢 SOCKET HOOK: Canal creado:', data);
+      
+      window.dispatchEvent(new CustomEvent('channelCreated', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('channel_updated', (data) => {
+      console.log('📝 SOCKET HOOK: Canal actualizado:', data);
+      
+      window.dispatchEvent(new CustomEvent('channelUpdated', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('channel_deleted', (data) => {
+      console.log('🗑️ SOCKET HOOK: Canal eliminado:', data);
+      
+      window.dispatchEvent(new CustomEvent('channelDeleted', {
+        detail: data
+      }));
+    });
+
+    // =================================================================
+    // 🎧 EVENT LISTENERS PARA GESTIÓN DE MIEMBROS
+    // =================================================================
+
+    newSocket.on('member_removed_from_project', (data) => {
+      console.log('🚫 SOCKET HOOK: Miembro removido del proyecto:', data);
+      
+      window.dispatchEvent(new CustomEvent('memberRemovedFromProject', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('removed_from_project', (data) => {
+      console.log('🚫 SOCKET HOOK: Fuiste removido del proyecto:', data);
+      
+      window.dispatchEvent(new CustomEvent('removedFromProject', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('member_added_to_channel', (data) => {
+      console.log('➕ SOCKET HOOK: Miembro agregado al canal:', data);
+      
+      window.dispatchEvent(new CustomEvent('memberAddedToChannel', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('member_removed_from_channel', (data) => {
+      console.log('➖ SOCKET HOOK: Miembro removido del canal:', data);
+      
+      window.dispatchEvent(new CustomEvent('memberRemovedFromChannel', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('removed_from_channel', (data) => {
+      console.log('🚫 SOCKET HOOK: Fuiste removido del canal:', data);
+      
+      window.dispatchEvent(new CustomEvent('removedFromChannel', {
+        detail: data
+      }));
+    });
+
+    // =================================================================
+    // 🎧 EVENT LISTENERS PARA NOTIFICACIONES (EXISTENTES)
+    // =================================================================
+
+    newSocket.on('task_updated', (data) => {
+      console.log('📝 SOCKET HOOK: Tarea actualizada:', data);
+      
+      window.dispatchEvent(new CustomEvent('taskUpdated', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('comment_added', (data) => {
+      console.log('💬 SOCKET HOOK: Comentario agregado:', data);
+      
+      window.dispatchEvent(new CustomEvent('commentAdded', {
+        detail: data
+      }));
+    });
+
+    newSocket.on('project_updated', (data) => {
+      console.log('🏗️ SOCKET HOOK: Proyecto actualizado:', data);
+      
+      window.dispatchEvent(new CustomEvent('projectUpdated', {
+        detail: data
+      }));
+    });
+
+    // =================================================================
+    // 🎧 EVENT LISTENERS PARA TESTING Y ERRORES
+    // =================================================================
+
+    newSocket.on('pong_test', (data) => {
+      console.log('🏓 SOCKET HOOK: Pong recibido:', data);
+      const latency = Date.now() - data.originalData?.timestamp;
+      setConnectionStats(prev => ({
+        ...prev,
+        lastPing: new Date(),
+        latency: latency
+      }));
+    });
+
+    newSocket.on('error', (data) => {
+      console.error('❌ SOCKET HOOK: Error del servidor:', data);
+      setConnectionError(`Error del servidor: ${data.message}`);
+    });
+
+    // =================================================================
+    // 🧹 CLEANUP
+    // =================================================================
+
+    return () => {
+      console.log('🧹 SOCKET HOOK: Limpiando conexión');
+      
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+      }
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      
+      newSocket.disconnect();
       setSocket(null);
       setConnected(false);
-      setOnlineUsers(new Map());
-      setProjectOnlineUsers(new Map());
+      socketRef.current = null;
+    };
+  }, [token, user]);
+
+  // =================================================================
+  // 🔧 FUNCIONES DE UTILIDAD
+  // =================================================================
+
+  const startPingInterval = (socket) => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
     }
-  }, [isAuthenticated, token, user, isLoading]);
+    
+    pingIntervalRef.current = setInterval(() => {
+      if (socket && socket.connected) {
+        socket.emit('ping_test', {
+          timestamp: Date.now(),
+          userAgent: navigator.userAgent,
+          userId: user?.id
+        });
+      }
+    }, 30000); // Ping cada 30 segundos
+  };
 
   // =================================================================
-  // FUNCIONES DE UTILIDAD PARA NOTIFICACIONES
+  // 🏠 FUNCIONES PARA PROYECTOS
   // =================================================================
 
-  const addNotification = useCallback((notification) => {
-    setNotifications(prev => [
-      { ...notification, timestamp: new Date() },
-      ...prev.slice(0, 9) // Mantener solo las últimas 10
-    ]);
+  const joinProject = useCallback((projectId) => {
+    if (socket && connected && projectId) {
+      console.log('🏠 SOCKET HOOK: Uniéndose al proyecto:', projectId);
+      socket.emit('join_project', projectId);
+      setUserProjects(prev => new Set([...prev, projectId]));
+      setCurrentProject(projectId);
+      return true;
+    }
+    console.warn('⚠️ SOCKET HOOK: No se puede unir al proyecto - Socket no conectado');
+    return false;
+  }, [socket, connected]);
 
-    // Auto-remover después de 5 segundos
-    setTimeout(() => {
-      removeNotification(notification.id);
-    }, 5000);
-  }, []);
+  const leaveProject = useCallback((projectId) => {
+    if (socket && projectId) {
+      console.log('🚪 SOCKET HOOK: Saliendo del proyecto:', projectId);
+      socket.emit('leave_project', projectId);
+      setUserProjects(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(projectId);
+        return newSet;
+      });
+      
+      if (currentProject === projectId) {
+        setCurrentProject(null);
+      }
+      return true;
+    }
+    return false;
+  }, [socket, currentProject]);
 
-  const removeNotification = useCallback((notificationId) => {
-    setNotifications(prev => 
-      prev.filter(notif => notif.id !== notificationId)
-    );
-  }, []);
-
-  // =================================================================
-  // 🆕 FUNCIONES PARA USUARIOS EN LÍNEA Y GESTIÓN DE MIEMBROS
-  // =================================================================
-
-  // Obtener usuarios en línea de un proyecto
-  const getProjectOnlineUsers = useCallback((projectId) => {
-    return projectOnlineUsers.get(projectId) || [];
-  }, [projectOnlineUsers]);
-
-  // Verificar si un usuario está en línea en un proyecto
-  const isUserOnlineInProject = useCallback((projectId, userId) => {
-    const users = projectOnlineUsers.get(projectId) || [];
-    return users.some(user => user.userId === userId && user.isOnline);
-  }, [projectOnlineUsers]);
-
-  // Obtener count de usuarios en línea de un proyecto
-  const getOnlineUsersCount = useCallback((projectId) => {
-    const users = projectOnlineUsers.get(projectId) || [];
-    return users.filter(user => user.isOnline).length;
-  }, [projectOnlineUsers]);
-
-  // Solicitar usuarios en línea de un proyecto
   const requestProjectOnlineUsers = useCallback((projectId) => {
-    if (socket && connected) {
-      console.log(`👥 Solicitando usuarios en línea del proyecto: ${projectId}`);
+    if (socket && connected && projectId) {
+      console.log('👥 SOCKET HOOK: Solicitando usuarios en línea del proyecto:', projectId);
       socket.emit('request_project_online_users', projectId);
       return true;
     }
     return false;
   }, [socket, connected]);
 
-  // Remover miembro del proyecto
-  const removeMember = useCallback((projectId, memberIdToRemove, reason) => {
-    if (socket && connected) {
-      console.log(`🚫 Removiendo miembro: ${memberIdToRemove} del proyecto: ${projectId}`);
-      socket.emit('remove_project_member', { 
-        projectId, 
-        memberIdToRemove, 
-        reason: reason || 'Sin razón especificada' 
-      });
-      return true;
-    } else {
-      console.log(`⏳ Socket no listo, no se puede remover miembro`);
-      return false;
-    }
-  }, [socket, connected]);
+  const getProjectOnlineUsers = useCallback((projectId) => {
+    return projectOnlineUsers.get(projectId) || [];
+  }, [projectOnlineUsers]);
+
+  const isUserOnlineInProject = useCallback((projectId, userId) => {
+    const users = projectOnlineUsers.get(projectId) || [];
+    return users.some(user => user.userId === userId && user.isOnline);
+  }, [projectOnlineUsers]);
+
+  const getOnlineUsersCount = useCallback((projectId) => {
+    const users = projectOnlineUsers.get(projectId) || [];
+    return users.filter(user => user.isOnline).length;
+  }, [projectOnlineUsers]);
 
   // =================================================================
-  // FUNCIONES PARA CHAT (EXISTENTES)
+  // 💬 FUNCIONES PARA CANALES
   // =================================================================
 
-  // Unirse a un canal
   const joinChannel = useCallback((channelId) => {
-    if (socket && connected) {
-      console.log(`💬 Uniéndose al canal: ${channelId}`);
+    if (socket && connected && channelId) {
+      console.log('💬 SOCKET HOOK: Uniéndose al canal:', channelId);
       socket.emit('join_channel', channelId);
+      setCurrentChannel(channelId);
       return true;
-    } else {
-      console.log(`⏳ Socket no listo, no se puede unir al canal: ${channelId}`);
-      return false;
     }
+    return false;
   }, [socket, connected]);
 
-  // Salir de un canal
   const leaveChannel = useCallback((channelId) => {
-    if (socket && connected) {
-      console.log(`👋 Saliendo del canal: ${channelId}`);
+    if (socket && channelId) {
+      console.log('👋 SOCKET HOOK: Saliendo del canal:', channelId);
       socket.emit('leave_channel', channelId);
-      return true;
-    }
-    return false;
-  }, [socket, connected]);
-
-  // Indicar que se está escribiendo
-  const startTyping = useCallback((channelId) => {
-    if (socket && connected) {
-      socket.emit('typing_start', { channelId });
-      return true;
-    }
-    return false;
-  }, [socket, connected]);
-
-  // Indicar que se dejó de escribir
-  const stopTyping = useCallback((channelId) => {
-    if (socket && connected) {
-      socket.emit('typing_stop', { channelId });
-      return true;
-    }
-    return false;
-  }, [socket, connected]);
-
-  // Marcar mensajes como leídos
-  const markMessagesAsRead = useCallback((channelId, messageIds = []) => {
-    if (socket && connected) {
-      socket.emit('mark_messages_read', { channelId, messageIds });
-      return true;
-    }
-    return false;
-  }, [socket, connected]);
-
-  // Enviar mensaje (principalmente para notificar, el mensaje se envía por API)
-  const sendMessage = useCallback((channelId, content) => {
-    if (socket && connected) {
-      socket.emit('send_message', { channelId, content });
-      return true;
-    }
-    return false;
-  }, [socket, connected]);
-
-  // =================================================================
-  // FUNCIONES EXISTENTES (Proyectos, Tareas, etc.)
-  // =================================================================
-
-  const joinProject = useCallback((projectId) => {
-    if (socket && connected) {
-      console.log(`👥 Uniéndose al proyecto: ${projectId}`);
-      socket.emit('join_project', projectId);
-      return true;
-    }
-    return false;
-  }, [socket, connected]);
-
-  const leaveProject = useCallback((projectId) => {
-    if (socket && connected) {
-      console.log(`👋 Saliendo del proyecto: ${projectId}`);
-      socket.emit('leave_project', projectId);
       
-      // Limpiar usuarios en línea del proyecto local
-      setProjectOnlineUsers(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(projectId);
-        return newMap;
+      if (currentChannel === channelId) {
+        setCurrentChannel(null);
+      }
+      return true;
+    }
+    return false;
+  }, [socket, currentChannel]);
+
+  // =================================================================
+  // 👥 FUNCIONES PARA GESTIÓN DE MIEMBROS
+  // =================================================================
+
+  const removeMember = useCallback((projectId, memberId, reason = '') => {
+    if (socket && connected && projectId && memberId) {
+      console.log('🗑️ SOCKET HOOK: Removiendo miembro:', { projectId, memberId, reason });
+      socket.emit('remove_project_member', {
+        projectId,
+        memberIdToRemove: memberId,
+        reason
       });
-      
       return true;
     }
     return false;
   }, [socket, connected]);
 
-  const updateTask = useCallback((projectId, taskId, update, action = 'updated') => {
-    if (socket && connected) {
-      socket.emit('task_update', { projectId, taskId, update, action });
+  const removeUserFromChat = useCallback((projectId, userId, reason = '') => {
+    if (socket && connected && projectId && userId) {
+      console.log('🗑️ SOCKET HOOK: Removiendo usuario del chat:', { projectId, userId, reason });
+      socket.emit('remove_user_from_chat', {
+        projectId,
+        userId,
+        reason
+      });
       return true;
     }
     return false;
   }, [socket, connected]);
 
-  const updateProject = useCallback((projectId, update, action = 'updated') => {
-    if (socket && connected) {
-      socket.emit('project_update', { projectId, update, action });
+  const addMemberToChannel = useCallback((channelId, memberId, projectId) => {
+    if (socket && connected && channelId && memberId) {
+      console.log('➕ SOCKET HOOK: Agregando miembro al canal:', { channelId, memberId });
+      socket.emit('add_member_to_channel', {
+        channelId,
+        memberId,
+        projectId
+      });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  const removeMemberFromChannel = useCallback((channelId, memberId, projectId, reason = '') => {
+    if (socket && connected && channelId && memberId) {
+      console.log('➖ SOCKET HOOK: Removiendo miembro del canal:', { channelId, memberId });
+      socket.emit('remove_member_from_channel', {
+        channelId,
+        memberId,
+        projectId,
+        reason
+      });
       return true;
     }
     return false;
   }, [socket, connected]);
 
   // =================================================================
-  // FUNCIONES GENÉRICAS
+  // 📨 FUNCIONES PARA MENSAJES
   // =================================================================
 
-  const emit = useCallback((event, data) => {
-    if (socket && connected) {
-      socket.emit(event, data);
-      console.log(`📤 Emit exitoso: ${event}`);
+  const sendMessage = useCallback((projectId, channelId, message, type = 'text') => {
+    if (socket && connected && channelId && message.trim()) {
+      console.log('📨 SOCKET HOOK: Enviando mensaje:', { channelId, message });
+      socket.emit('send_message', {
+        projectId,
+        channelId,
+        message: message.trim(),
+        type
+      });
       return true;
-    } else {
-      console.log(`⏳ Socket no listo, emit diferido: ${event}`);
-      return false;
     }
+    return false;
   }, [socket, connected]);
 
-  const on = useCallback((event, callback) => {
+  const deleteMessage = useCallback((projectId, channelId, messageId) => {
+    if (socket && connected && channelId && messageId) {
+      console.log('🗑️ SOCKET HOOK: Eliminando mensaje:', { channelId, messageId });
+      socket.emit('delete_message', {
+        projectId,
+        channelId,
+        messageId
+      });
+      return true;
+    }
+    return false;
+  }, [socket, connected]);
+
+  // =================================================================
+  // 🎧 FUNCIONES GENÉRICAS DE SOCKET
+  // =================================================================
+
+  const emit = useCallback((eventName, data) => {
+    if (socket && connected) {
+      console.log('📡 SOCKET HOOK: Emitiendo evento:', eventName, data);
+      socket.emit(eventName, data);
+      return true;
+    }
+    console.warn('⚠️ SOCKET HOOK: No se puede emitir - Socket no conectado');
+    return false;
+  }, [socket, connected]);
+
+  const on = useCallback((eventName, callback) => {
     if (socket) {
-      console.log(`🎧 Agregando listener: ${event}`);
-      socket.on(event, callback);
-      
-      // Guardar referencia
-      if (!listenersRef.current.has(event)) {
-        listenersRef.current.set(event, []);
-      }
-      listenersRef.current.get(event).push(callback);
+      console.log('👂 SOCKET HOOK: Registrando listener para:', eventName);
+      socket.on(eventName, callback);
+      return true;
     }
+    return false;
   }, [socket]);
 
-  const off = useCallback((event, callback) => {
+  const off = useCallback((eventName, callback) => {
     if (socket) {
-      socket.off(event, callback);
-      
-      const listeners = listenersRef.current.get(event);
-      if (listeners) {
-        const index = listeners.indexOf(callback);
-        if (index > -1) {
-          listeners.splice(index, 1);
-        }
-      }
+      console.log('🔇 SOCKET HOOK: Removiendo listener para:', eventName);
+      socket.off(eventName, callback);
+      return true;
     }
+    return false;
   }, [socket]);
 
   // =================================================================
-  // RETORNO DEL HOOK
+  // 🧪 FUNCIONES DE TESTING
+  // =================================================================
+
+  const testConnection = useCallback(() => {
+    if (socket && connected) {
+      console.log('🧪 SOCKET HOOK: Probando conexión...');
+      socket.emit('ping_test', {
+        timestamp: Date.now(),
+        testMessage: 'Test de conectividad desde useSocket hook',
+        userId: user?.id,
+        userAgent: navigator.userAgent
+      });
+      return true;
+    }
+    console.warn('⚠️ SOCKET HOOK: No se puede probar - Socket no conectado');
+    return false;
+  }, [socket, connected, user]);
+
+  const getConnectionInfo = useCallback(() => {
+    return {
+      connected,
+      reconnecting,
+      connectionError,
+      socketId: socket?.id || null,
+      stats: connectionStats,
+      currentProject,
+      currentChannel,
+      userProjects: Array.from(userProjects),
+      projectsWithOnlineUsers: Array.from(projectOnlineUsers.keys()),
+      totalOnlineUsers: Array.from(projectOnlineUsers.values()).reduce((total, users) => total + users.length, 0)
+    };
+  }, [connected, reconnecting, connectionError, socket, connectionStats, currentProject, currentChannel, userProjects, projectOnlineUsers]);
+
+  // =================================================================
+  // 🔄 FUNCIONES DE RECONEXIÓN MANUAL
+  // =================================================================
+
+  const forceReconnect = useCallback(() => {
+    if (socket) {
+      console.log('🔄 SOCKET HOOK: Forzando reconexión...');
+      socket.disconnect();
+      socket.connect();
+      return true;
+    }
+    return false;
+  }, [socket]);
+
+  const disconnect = useCallback(() => {
+    if (socket) {
+      console.log('🔌 SOCKET HOOK: Desconectando manualmente...');
+      socket.disconnect();
+      return true;
+    }
+    return false;
+  }, [socket]);
+
+  // =================================================================
+  // 📊 RETURN DEL HOOK
   // =================================================================
 
   return {
-    // Estado básico
+    // Estados básicos
     socket,
     connected,
-    notifications,
+    reconnecting,
+    connectionError,
     
-    // 🆕 Estados y funciones de usuarios en línea
-    onlineUsers,
-    projectOnlineUsers,
+    // Estados de tracking
+    currentProject,
+    currentChannel,
+    userProjects,
+    
+    // Funciones para proyectos
+    joinProject,
+    leaveProject,
+    requestProjectOnlineUsers,
     getProjectOnlineUsers,
     isUserOnlineInProject,
     getOnlineUsersCount,
-    requestProjectOnlineUsers,
     
-    // 🆕 Funciones de gestión de miembros
-    removeMember,
-    
-    // Funciones de notificaciones
-    addNotification,
-    removeNotification,
-    
-    // Funciones de chat
+    // Funciones para canales
     joinChannel,
     leaveChannel,
-    startTyping,
-    stopTyping,
-    markMessagesAsRead,
+    
+    // Funciones para gestión de miembros
+    removeMember,
+    removeUserFromChat,
+    addMemberToChannel,
+    removeMemberFromChannel,
+    
+    // Funciones para mensajes
     sendMessage,
+    deleteMessage,
     
-    // Funciones de proyectos
-    joinProject,
-    leaveProject,
-    updateTask,
-    updateProject,
-    
-    // Funciones genéricas
+    // Funciones genéricas de socket
     emit,
     on,
-    off
+    off,
+    
+    // Funciones de utilidad
+    testConnection,
+    getConnectionInfo,
+    forceReconnect,
+    disconnect,
+    
+    // Estadísticas
+    connectionStats
   };
 };
 

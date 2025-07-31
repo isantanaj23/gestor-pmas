@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose'); // 🔥 AGREGAR ESTA LÍNEA
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -782,7 +783,7 @@ router.patch('/:id/members/:memberId/role', async (req, res) => {
     const Project = require('../models/Project');
     const User = require('../models/User');
 
-    const validRoles = ['developer', 'designer', 'manager', 'tester', 'admin'];
+const validRoles = ['admin', 'manager', 'developer', 'designer', 'tester', 'viewer', 'client'];
     
     if (!validRoles.includes(newRole)) {
       return res.status(400).json({
@@ -1122,6 +1123,151 @@ router.get('/debug/users', async (req, res) => {
     });
   }
 });
+
+
+// server/routes/projects.js - Agregar esta nueva ruta
+
+// 🗑️ ELIMINAR MIEMBRO DEL EQUIPO
+router.delete('/:projectId/members/:userId', async (req, res) => {
+  try {
+    const Project = require('../models/Project');
+    const { projectId, userId } = req.params;
+    
+    console.log('🗑️ Intentando eliminar miembro:', { projectId, userId, requestUserId: req.user.id });
+
+    // Validar IDs
+    if (!mongoose.Types.ObjectId.isValid(projectId) || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de proyecto o usuario inválido'
+      });
+    }
+
+    // Buscar proyecto
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Proyecto no encontrado'
+      });
+    }
+
+    // Verificar permisos - Solo owner, admin o manager pueden eliminar miembros
+    const canRemove = project.owner.toString() === req.user.id || 
+                      req.user.role === 'admin' || 
+                      req.user.role === 'manager';
+    
+    if (!canRemove) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para eliminar miembros de este proyecto'
+      });
+    }
+
+    // Verificar que el usuario no sea el owner del proyecto
+    if (project.owner.toString() === userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede eliminar al propietario del proyecto'
+      });
+    }
+
+    // Buscar y eliminar el miembro del equipo
+    const memberIndex = project.team.findIndex(member => member.user.toString() === userId);
+    
+    if (memberIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'El usuario no es miembro de este proyecto'
+      });
+    }
+
+    // Obtener datos del miembro antes de eliminarlo
+    const removedMember = project.team[memberIndex];
+    
+    // Eliminar miembro
+    project.team.splice(memberIndex, 1);
+    await project.save();
+
+    // Poblar datos actualizados
+    await project.populate('owner', 'name email avatar');
+    await project.populate('team.user', 'name email avatar');
+
+    console.log('✅ Miembro eliminado exitosamente');
+
+    res.status(200).json({
+      success: true,
+      message: 'Miembro eliminado del equipo exitosamente',
+      data: {
+        project: project,
+        removedMember: {
+          userId: userId,
+          role: removedMember.role
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error al eliminar miembro del equipo:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error del servidor al eliminar miembro del equipo',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// 🔍 VERIFICAR PERMISOS DE USUARIO EN PROYECTO
+router.get('/:projectId/permissions', async (req, res) => {
+  try {
+    const Project = require('../models/Project');
+    const { projectId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Proyecto no encontrado'
+      });
+    }
+
+    // Verificar si es owner
+    const isOwner = project.owner.toString() === userId;
+    
+    // Verificar si es miembro del equipo
+    const teamMember = project.team.find(member => member.user.toString() === userId);
+    const isMember = !!teamMember;
+    const memberRole = teamMember ? teamMember.role : null;
+
+    // Importar sistema de permisos (asumiendo que tienes acceso a roles.js)
+    const permissions = {
+      canManageMembers: isOwner || userRole === 'admin' || userRole === 'manager',
+      canRemoveMembers: isOwner || userRole === 'admin' || userRole === 'manager',
+      canEditProject: isOwner || userRole === 'admin' || userRole === 'manager',
+      canViewProject: isOwner || isMember || userRole === 'admin',
+      canSendMessages: isOwner || isMember,
+      isOwner,
+      isMember,
+      userRole,
+      memberRole
+    };
+
+    res.status(200).json({
+      success: true,
+      data: permissions
+    });
+
+  } catch (error) {
+    console.error('❌ Error al verificar permisos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error del servidor al verificar permisos'
+    });
+  }
+});
+
 
 // 🧪 RUTA TEMPORAL DE DEBUG
 router.put('/:id/debug', async (req, res) => {

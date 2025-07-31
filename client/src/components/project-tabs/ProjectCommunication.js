@@ -1,3 +1,5 @@
+// client/src/components/project-tabs/ProjectCommunication.js - VERSIÓN COMPLETA
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import useSocket from '../../hooks/useSocket';
@@ -14,13 +16,13 @@ const ProjectCommunication = ({ projectId, project }) => {
     on, 
     off,
     getProjectOnlineUsers,
-    isUserOnlineInProject,
-    getOnlineUsersCount,
-    requestProjectOnlineUsers,
-    removeMember
+    requestProjectOnlineUsers
   } = useSocket();
   
-  // Estados básicos
+  // =================================================================
+  // 🏠 ESTADOS PRINCIPALES
+  // =================================================================
+  
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -28,32 +30,57 @@ const ProjectCommunication = ({ projectId, project }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // 🆕 Estados para usuarios en línea y miembros
+  // 👥 Estados para gestión de miembros
   const [projectMembers, setProjectMembers] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [channelMembers, setChannelMembers] = useState(new Map()); // channelId -> Array de miembros
   
-  // Estados para notificaciones
+  // 🔔 Estados para notificaciones
   const [unreadCounts, setUnreadCounts] = useState(new Map());
   const [totalUnread, setTotalUnread] = useState(0);
   
-  // Estados para modales
+  // 🎭 Estados para modales
   const [showCreateChannelModal, setShowCreateChannelModal] = useState(false);
   const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
+  const [showChannelMembersModal, setShowChannelMembersModal] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [removeReason, setRemoveReason] = useState('');
+  const [selectedChannelForMembers, setSelectedChannelForMembers] = useState(null);
+  
   const [newChannelData, setNewChannelData] = useState({
     name: '',
-    description: ''
+    description: '',
+    isPrivate: false
   });
   
-  // Referencias
+  // 📚 Referencias
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const activeChannelRef = useRef(null);
 
   // =================================================================
-  // FUNCIÓN DE SCROLL
+  // 🎨 SISTEMA DE NOTIFICACIONES ELEGANTES
+  // =================================================================
+
+  const showNotification = (type, title, message, color = 'primary') => {
+    const event = new CustomEvent('show-notification', {
+      detail: { 
+        type, 
+        title, 
+        message, 
+        icon: type === 'success' ? 'bi-check-circle' : 
+              type === 'error' ? 'bi-x-circle-fill' : 
+              type === 'warning' ? 'bi-exclamation-triangle-fill' : 'bi-info-circle-fill',
+        color,
+        duration: type === 'error' ? 6000 : 4000
+      }
+    });
+    window.dispatchEvent(event);
+  };
+
+  // =================================================================
+  // 📜 FUNCIÓN DE SCROLL INTELIGENTE
   // =================================================================
 
   const scrollToBottom = (force = false) => {
@@ -70,13 +97,13 @@ const ProjectCommunication = ({ projectId, project }) => {
   };
 
   // =================================================================
-  // 🆕 SOCKET.IO CON TRACKING DE USUARIOS EN LÍNEA
+  // 🔌 CONFIGURACIÓN DE SOCKET.IO
   // =================================================================
 
   useEffect(() => {
     if (!projectId || !socketConnected || !socket) return;
 
-    console.log('🏠 PROJECT COMMUNICATION: Uniéndose al proyecto:', projectId);
+    console.log('🏠 PROJECT COMMUNICATION: Configurando Socket.IO para proyecto:', projectId);
     
     // Unirse al proyecto
     joinProject(projectId);
@@ -86,7 +113,10 @@ const ProjectCommunication = ({ projectId, project }) => {
       requestProjectOnlineUsers(projectId);
     }, 1000);
 
-    // 🆕 Configurar listeners para eventos de usuarios
+    // =================================================================
+    // 👥 LISTENERS PARA USUARIOS EN LÍNEA
+    // =================================================================
+
     const handleProjectOnlineUsers = (data) => {
       console.log('👥 PROJECT COMMUNICATION: Usuarios en línea actualizados:', data);
       if (data.detail.projectId === projectId) {
@@ -115,7 +145,7 @@ const ProjectCommunication = ({ projectId, project }) => {
             return [...prev, {
               userId: data.detail.userId,
               userName: data.detail.userName,
-              userAvatar: data.detail.userAvatar,
+              userRole: data.detail.userRole,
               isOnline: true,
               connectedAt: new Date()
             }];
@@ -144,54 +174,10 @@ const ProjectCommunication = ({ projectId, project }) => {
       }
     };
 
-    const handleMemberRemoved = (data) => {
-      console.log('🚫 PROJECT COMMUNICATION: Miembro removido:', data);
-      if (data.detail.projectId === projectId) {
-        // Agregar mensaje de actividad
-        const activityMessage = {
-          id: Date.now(),
-          _id: `activity_${Date.now()}`,
-          sender: { name: 'Sistema', _id: 'system' },
-          content: `Un miembro fue removido del proyecto por ${data.detail.removedBy.name}`,
-          createdAt: new Date(),
-          type: 'activity'
-        };
-        setMessages(prev => [...prev, activityMessage]);
-        
-        // Actualizar lista de miembros y usuarios en línea
-        setProjectMembers(prev => prev.filter(member => member._id !== data.detail.removedMemberId));
-        setOnlineUsers(prev => prev.filter(u => u.userId !== data.detail.removedMemberId));
-      }
-    };
+    // =================================================================
+    // 📨 LISTENERS PARA MENSAJES
+    // =================================================================
 
-    const handleRemovedFromProject = (data) => {
-      console.log('🚫 PROJECT COMMUNICATION: Fuiste removido del proyecto:', data);
-      alert(`Has sido removido del proyecto "${data.detail.projectName}" por ${data.detail.removedBy}. Razón: ${data.detail.reason}`);
-      
-      // Redirigir o actualizar la vista
-      window.location.href = '/projects';
-    };
-
-    const handleMemberAdded = (data) => {
-      console.log('👥 PROJECT COMMUNICATION: Nuevo miembro agregado:', data);
-      if (data.detail.projectId === projectId) {
-        // Agregar mensaje de actividad
-        const activityMessage = {
-          id: Date.now(),
-          _id: `activity_${Date.now()}`,
-          sender: { name: 'Sistema', _id: 'system' },
-          content: `${data.detail.newMember.name} fue agregado al proyecto por ${data.detail.addedBy.name}`,
-          createdAt: new Date(),
-          type: 'activity'
-        };
-        setMessages(prev => [...prev, activityMessage]);
-        
-        // Recargar miembros del proyecto
-        loadProjectMembers();
-      }
-    };
-
-    // Manejar mensajes en tiempo real
     const handleNewMessageGlobal = (data) => {
       console.log('📨 PROJECT COMMUNICATION: Nuevo mensaje global:', data);
       
@@ -221,9 +207,22 @@ const ProjectCommunication = ({ projectId, project }) => {
         } else if (!isFromSelf) {
           // Incrementar contador para otros canales
           updateUnreadCount(channelId, true, 1);
+          
+          // Mostrar notificación elegante
+          const channelName = channels.find(ch => ch._id === channelId)?.name || 'Canal';
+          showNotification(
+            'info', 
+            `Nuevo mensaje en #${channelName}`, 
+            `${message.sender?.name}: ${message.content?.substring(0, 50)}${message.content?.length > 50 ? '...' : ''}`,
+            'info'
+          );
         }
       }
     };
+
+    // =================================================================
+    // 🏗️ LISTENERS PARA CANALES
+    // =================================================================
 
     const handleChannelCreated = (data) => {
       if (data.detail.projectId === projectId) {
@@ -231,6 +230,12 @@ const ProjectCommunication = ({ projectId, project }) => {
         setChannels(prev => {
           const exists = prev.some(ch => ch._id === data.detail.channel._id);
           if (!exists) {
+            showNotification(
+              'success', 
+              'Nuevo canal creado', 
+              `El canal #${data.detail.channel.name} fue creado por ${data.detail.createdBy.name}`,
+              'success'
+            );
             return [data.detail.channel, ...prev];
           }
           return prev;
@@ -238,49 +243,126 @@ const ProjectCommunication = ({ projectId, project }) => {
       }
     };
 
-    // Registrar event listeners usando addEventListener
+    // =================================================================
+    // 👥 LISTENERS PARA GESTIÓN DE MIEMBROS
+    // =================================================================
+
+    const handleMemberRemovedFromProject = (data) => {
+      console.log('🚫 PROJECT COMMUNICATION: Miembro removido del proyecto:', data);
+      if (data.detail.projectId === projectId) {
+        // Actualizar lista de miembros
+        setProjectMembers(prev => prev.filter(member => member._id !== data.detail.removedMemberId));
+        setOnlineUsers(prev => prev.filter(u => u.userId !== data.detail.removedMemberId));
+        
+        // Mensaje de actividad
+        const activityMessage = {
+          id: Date.now(),
+          _id: `activity_${Date.now()}`,
+          sender: { name: 'Sistema', _id: 'system' },
+          content: `Un miembro fue removido del proyecto por ${data.detail.removedBy.name}`,
+          createdAt: new Date(),
+          type: 'activity'
+        };
+        setMessages(prev => [...prev, activityMessage]);
+        
+        showNotification(
+          'warning', 
+          'Miembro removido', 
+          `Un miembro fue eliminado del proyecto por ${data.detail.removedBy.name}`,
+          'warning'
+        );
+      }
+    };
+
+    const handleRemovedFromProject = (data) => {
+      console.log('🚫 PROJECT COMMUNICATION: Fuiste removido del proyecto:', data);
+      showNotification(
+        'error', 
+        'Removido del proyecto', 
+        `Has sido eliminado del proyecto "${data.detail.projectName}" por ${data.detail.removedBy}. Razón: ${data.detail.reason}`,
+        'danger'
+      );
+      
+      // Redirigir después de un delay
+      setTimeout(() => {
+        window.location.href = '/projects';
+      }, 5000);
+    };
+
+    const handleMemberAddedToChannel = (data) => {
+      console.log('➕ PROJECT COMMUNICATION: Miembro agregado al canal:', data);
+      if (data.detail.channelId === activeChannel?._id) {
+        // Actualizar miembros del canal activo
+        loadChannelMembers(activeChannel._id);
+      }
+    };
+
+    const handleMemberRemovedFromChannel = (data) => {
+      console.log('➖ PROJECT COMMUNICATION: Miembro removido del canal:', data);
+      if (data.detail.channelId === activeChannel?._id) {
+        // Actualizar miembros del canal activo
+        loadChannelMembers(activeChannel._id);
+      }
+    };
+
+    const handleRemovedFromChannel = (data) => {
+      console.log('🚫 PROJECT COMMUNICATION: Fuiste removido del canal:', data);
+      showNotification(
+        'warning', 
+        'Removido del canal', 
+        `Has sido removido del canal por ${data.detail.removedBy}. Razón: ${data.detail.reason}`,
+        'warning'
+      );
+      
+      // Si estás en ese canal, cambiar al general
+      if (data.detail.channelId === activeChannel?._id) {
+        const generalChannel = channels.find(ch => ch.name.toLowerCase() === 'general');
+        if (generalChannel) {
+          switchToChannel(generalChannel);
+        }
+      }
+    };
+
+    // Registrar event listeners
     window.addEventListener('projectOnlineUsers', handleProjectOnlineUsers);
     window.addEventListener('userJoinedProject', handleUserJoinedProject);
     window.addEventListener('userLeftProject', handleUserLeftProject);
-    window.addEventListener('memberRemoved', handleMemberRemoved);
-    window.addEventListener('removedFromProject', handleRemovedFromProject);
-    window.addEventListener('memberAdded', handleMemberAdded);
     window.addEventListener('newMessageGlobal', handleNewMessageGlobal);
     window.addEventListener('channelCreated', handleChannelCreated);
+    window.addEventListener('memberRemovedFromProject', handleMemberRemovedFromProject);
+    window.addEventListener('removedFromProject', handleRemovedFromProject);
+    window.addEventListener('memberAddedToChannel', handleMemberAddedToChannel);
+    window.addEventListener('memberRemovedFromChannel', handleMemberRemovedFromChannel);
+    window.addEventListener('removedFromChannel', handleRemovedFromChannel);
 
     return () => {
       // Limpiar event listeners
       window.removeEventListener('projectOnlineUsers', handleProjectOnlineUsers);
       window.removeEventListener('userJoinedProject', handleUserJoinedProject);
       window.removeEventListener('userLeftProject', handleUserLeftProject);
-      window.removeEventListener('memberRemoved', handleMemberRemoved);
-      window.removeEventListener('removedFromProject', handleRemovedFromProject);
-      window.removeEventListener('memberAdded', handleMemberAdded);
       window.removeEventListener('newMessageGlobal', handleNewMessageGlobal);
       window.removeEventListener('channelCreated', handleChannelCreated);
+      window.removeEventListener('memberRemovedFromProject', handleMemberRemovedFromProject);
+      window.removeEventListener('removedFromProject', handleRemovedFromProject);
+      window.removeEventListener('memberAddedToChannel', handleMemberAddedToChannel);
+      window.removeEventListener('memberRemovedFromChannel', handleMemberRemovedFromChannel);
+      window.removeEventListener('removedFromChannel', handleRemovedFromChannel);
       
       // Salir del proyecto
       leaveProject(projectId);
     };
-  }, [projectId, socketConnected, socket, user?.id, joinProject, leaveProject, requestProjectOnlineUsers]);
+  }, [projectId, socketConnected, socket, user?.id, channels, activeChannel]);
 
   // Sincronizar activeChannel con referencia
   useEffect(() => {
     activeChannelRef.current = activeChannel;
   }, [activeChannel]);
 
-  // Actualizar usuarios en línea desde el hook
-  useEffect(() => {
-    if (projectId) {
-      const users = getProjectOnlineUsers(projectId);
-      setOnlineUsers(users);
-    }
-  }, [projectId, getProjectOnlineUsers]);
-
   // =================================================================
-  // 🆕 CARGAR MIEMBROS DEL PROYECTO
+  // 📊 CARGAR DATOS INICIALES
   // =================================================================
 
+  // Cargar miembros del proyecto
   const loadProjectMembers = async () => {
     if (!projectId) return;
 
@@ -306,7 +388,7 @@ const ProjectCommunication = ({ projectId, project }) => {
             email: member.user?.email || member.email,
             role: member.role || 'member',
             isOwner: false,
-            canBeRemoved: projectData.owner?._id === user?.id // Solo el owner puede remover
+            canBeRemoved: projectData.owner?._id === user?.id
           }))
         ];
         
@@ -316,13 +398,11 @@ const ProjectCommunication = ({ projectId, project }) => {
       
     } catch (error) {
       console.error('❌ Error cargando miembros:', error);
+      showNotification('error', 'Error', 'No se pudieron cargar los miembros del proyecto', 'danger');
     }
   };
 
-  // =================================================================
-  // FUNCIONES DE API EXISTENTES
-  // =================================================================
-
+  // Cargar canales del proyecto
   const loadChannels = async () => {
     if (!projectId) return;
 
@@ -341,16 +421,20 @@ const ProjectCommunication = ({ projectId, project }) => {
           const generalChannel = channelData.find(ch => ch.name.toLowerCase() === 'general') || channelData[0];
           await switchToChannel(generalChannel);
         }
+        
+        console.log('💬 Canales cargados:', channelData.length);
       }
       
     } catch (error) {
       console.error('❌ Error cargando canales:', error);
       setError(`Error cargando canales: ${error.response?.data?.message || error.message}`);
+      showNotification('error', 'Error', 'No se pudieron cargar los canales', 'danger');
     } finally {
       setLoading(false);
     }
   };
 
+  // Cargar mensajes de un canal
   const loadMessages = async (channelId) => {
     if (!channelId) return;
 
@@ -361,13 +445,39 @@ const ProjectCommunication = ({ projectId, project }) => {
         const messageData = response.data.data || [];
         setMessages(messageData);
         scrollToBottom(true);
+        console.log('📨 Mensajes cargados:', messageData.length);
       }
       
     } catch (error) {
       console.error('❌ Error cargando mensajes:', error);
+      showNotification('error', 'Error', 'No se pudieron cargar los mensajes', 'danger');
     }
   };
 
+  // Cargar miembros de un canal específico
+  const loadChannelMembers = async (channelId) => {
+    if (!channelId) return;
+
+    try {
+      const response = await API.get(`/channels/${channelId}/members`);
+      
+      if (response.data?.success) {
+        const members = response.data.data || [];
+        setChannelMembers(prev => new Map(prev.set(channelId, members)));
+        console.log('👥 Miembros del canal cargados:', members.length);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error cargando miembros del canal:', error);
+      // No mostrar notificación para este error, es menos crítico
+    }
+  };
+
+  // =================================================================
+  // 🔄 ACCIONES PRINCIPALES
+  // =================================================================
+
+  // Cambiar a un canal
   const switchToChannel = async (channel) => {
     console.log('🔄 PROJECT COMMUNICATION: Cambiando a canal:', channel.name);
     
@@ -379,6 +489,7 @@ const ProjectCommunication = ({ projectId, project }) => {
     setActiveChannel(channel);
     activeChannelRef.current = channel;
     await loadMessages(channel._id);
+    await loadChannelMembers(channel._id);
     
     // Limpiar contador del nuevo canal
     clearChannelUnread(channel._id);
@@ -389,6 +500,7 @@ const ProjectCommunication = ({ projectId, project }) => {
     }
   };
 
+  // Enviar mensaje
   const sendMessage = async (e) => {
     e.preventDefault();
     
@@ -407,18 +519,21 @@ const ProjectCommunication = ({ projectId, project }) => {
         throw new Error(response.data?.message || 'Error enviando mensaje');
       }
       
+      console.log('✅ Mensaje enviado exitosamente');
+      
     } catch (error) {
       console.error('❌ Error enviando mensaje:', error);
-      setNewMessage(messageContent);
-      alert(`Error: ${error.message}`);
+      setNewMessage(messageContent); // Restaurar mensaje
+      showNotification('error', 'Error', `No se pudo enviar el mensaje: ${error.message}`, 'danger');
     }
   };
 
+  // Crear nuevo canal
   const createChannel = async (e) => {
     e.preventDefault();
     
     if (!newChannelData.name.trim()) {
-      alert('El nombre del canal es requerido');
+      showNotification('warning', 'Atención', 'El nombre del canal es requerido', 'warning');
       return;
     }
 
@@ -427,44 +542,48 @@ const ProjectCommunication = ({ projectId, project }) => {
         name: newChannelData.name.trim(),
         description: newChannelData.description.trim() || `Canal ${newChannelData.name}`,
         projectId,
-        isPrivate: false
+        isPrivate: newChannelData.isPrivate
       });
       
       if (response.data?.success) {
         setShowCreateChannelModal(false);
-        setNewChannelData({ name: '', description: '' });
+        setNewChannelData({ name: '', description: '', isPrivate: false });
+        showNotification('success', 'Canal creado', `El canal #${newChannelData.name} fue creado exitosamente`, 'success');
+        
+        // Recargar canales después de un delay
         setTimeout(() => loadChannels(), 500);
       }
       
     } catch (error) {
       console.error('❌ Error creando canal:', error);
-      alert(`Error: ${error.response?.data?.message || error.message}`);
+      showNotification('error', 'Error', `No se pudo crear el canal: ${error.response?.data?.message || error.message}`, 'danger');
     }
   };
 
   // =================================================================
-  // 🆕 FUNCIONES DE GESTIÓN DE MIEMBROS
+  // 👥 GESTIÓN DE MIEMBROS
   // =================================================================
 
+  // Verificar si el usuario actual puede gestionar miembros
   const canManageMembers = () => {
-    // Solo el owner puede gestionar miembros
     const currentMember = projectMembers.find(member => member._id === user?.id);
-    return currentMember && currentMember.isOwner;
+    return currentMember && (currentMember.isOwner || currentMember.role === 'admin' || currentMember.role === 'manager');
   };
 
+  // Iniciar eliminación de miembro
   const handleRemoveMember = (member) => {
     if (!canManageMembers()) {
-      alert('No tienes permisos para eliminar miembros');
+      showNotification('warning', 'Sin permisos', 'No tienes permisos para eliminar miembros', 'warning');
       return;
     }
 
     if (member.isOwner) {
-      alert('No puedes eliminar al propietario del proyecto');
+      showNotification('warning', 'No permitido', 'No puedes eliminar al propietario del proyecto', 'warning');
       return;
     }
 
     if (member._id === user?.id) {
-      alert('No puedes eliminarte a ti mismo');
+      showNotification('warning', 'No permitido', 'No puedes eliminarte a ti mismo', 'warning');
       return;
     }
 
@@ -472,22 +591,28 @@ const ProjectCommunication = ({ projectId, project }) => {
     setShowRemoveMemberModal(true);
   };
 
+  // Confirmar eliminación de miembro
   const confirmRemoveMember = async () => {
     if (!memberToRemove) return;
 
     try {
-      // Usar la función del hook de Socket.IO
-      const success = removeMember(projectId, memberToRemove._id, removeReason);
-      
-      if (success) {
-        // También hacer la llamada REST API
-        const response = await API.delete(`/projects/${projectId}/members/${memberToRemove._id}`, {
-          data: { reason: removeReason }
+      // Usar Socket.IO para eliminación en tiempo real
+      if (socket && socketConnected) {
+        emit('remove_project_member', {
+          projectId,
+          memberIdToRemove: memberToRemove._id,
+          reason: removeReason
         });
-        
-        if (response.data?.success) {
-          console.log('✅ Miembro removido exitosamente via API');
-        }
+      }
+      
+      // También hacer llamada REST API como respaldo
+      const response = await API.delete(`/projects/${projectId}/members/${memberToRemove._id}`, {
+        data: { reason: removeReason }
+      });
+      
+      if (response.data?.success) {
+        console.log('✅ Miembro removido exitosamente');
+        showNotification('success', 'Miembro eliminado', `${memberToRemove.name} fue eliminado del proyecto`, 'success');
       }
       
       // Limpiar modal
@@ -495,16 +620,77 @@ const ProjectCommunication = ({ projectId, project }) => {
       setMemberToRemove(null);
       setRemoveReason('');
       
-      // La actualización se manejará via Socket.IO
-      
     } catch (error) {
       console.error('❌ Error eliminando miembro:', error);
-      alert(`Error: ${error.response?.data?.message || error.message}`);
+      showNotification('error', 'Error', `No se pudo eliminar el miembro: ${error.response?.data?.message || error.message}`, 'danger');
+    }
+  };
+
+  // Agregar miembro a canal
+  const addMemberToChannel = async (channelId, memberId) => {
+    if (!canManageMembers()) {
+      showNotification('warning', 'Sin permisos', 'No tienes permisos para gestionar canales', 'warning');
+      return;
+    }
+
+    try {
+      if (socket && socketConnected) {
+        emit('add_member_to_channel', {
+          channelId,
+          memberId,
+          projectId
+        });
+      }
+      
+      const response = await API.post(`/channels/${channelId}/members`, {
+        memberId
+      });
+      
+      if (response.data?.success) {
+        showNotification('success', 'Miembro agregado', 'Miembro agregado al canal exitosamente', 'success');
+        await loadChannelMembers(channelId);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error agregando miembro al canal:', error);
+      showNotification('error', 'Error', `No se pudo agregar el miembro al canal: ${error.response?.data?.message || error.message}`, 'danger');
+    }
+  };
+
+  // Remover miembro de canal
+  const removeMemberFromChannel = async (channelId, memberId, reason = 'removed_from_channel') => {
+    if (!canManageMembers()) {
+      showNotification('warning', 'Sin permisos', 'No tienes permisos para gestionar canales', 'warning');
+      return;
+    }
+
+    try {
+      if (socket && socketConnected) {
+        emit('remove_member_from_channel', {
+          channelId,
+          memberId,
+          projectId,
+          reason
+        });
+      }
+      
+      const response = await API.delete(`/channels/${channelId}/members/${memberId}`, {
+        data: { reason }
+      });
+      
+      if (response.data?.success) {
+        showNotification('success', 'Miembro removido', 'Miembro removido del canal exitosamente', 'success');
+        await loadChannelMembers(channelId);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error removiendo miembro del canal:', error);
+      showNotification('error', 'Error', `No se pudo remover el miembro del canal: ${error.response?.data?.message || error.message}`, 'danger');
     }
   };
 
   // =================================================================
-  // FUNCIONES DE NOTIFICACIONES
+  // 🔔 GESTIÓN DE NOTIFICACIONES
   // =================================================================
 
   const updateUnreadCount = (channelId, increment = true, count = 1) => {
@@ -528,7 +714,7 @@ const ProjectCommunication = ({ projectId, project }) => {
     try {
       await API.post(`/messages/channel/${channelId}/mark-all-read`);
     } catch (error) {
-      console.log('❌ Error marking as read:', error);
+      console.log('❌ Error marcando como leído:', error);
     }
   };
 
@@ -539,7 +725,7 @@ const ProjectCommunication = ({ projectId, project }) => {
   }, [unreadCounts]);
 
   // =================================================================
-  // FUNCIONES DE UTILIDAD
+  // 🎨 FUNCIONES DE UTILIDAD
   // =================================================================
 
   const formatMessageTime = (timestamp) => {
@@ -564,8 +750,12 @@ const ProjectCommunication = ({ projectId, project }) => {
     return onlineUsers.filter(user => user.isOnline).length;
   };
 
+  const getCurrentChannelMembers = () => {
+    return channelMembers.get(activeChannel?._id) || [];
+  };
+
   // =================================================================
-  // EFECTOS DE INICIALIZACIÓN
+  // 🏁 INICIALIZACIÓN
   // =================================================================
 
   useEffect(() => {
@@ -576,14 +766,17 @@ const ProjectCommunication = ({ projectId, project }) => {
   }, [projectId, user?.id, token]);
 
   // =================================================================
-  // RENDERIZADO
+  // 🎨 RENDERIZADO
   // =================================================================
 
   if (loading && channels.length === 0) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '300px' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Cargando chat...</span>
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary mb-3" role="status">
+            <span className="visually-hidden">Cargando chat...</span>
+          </div>
+          <p className="text-muted">Cargando sistema de chat...</p>
         </div>
       </div>
     );
@@ -591,25 +784,35 @@ const ProjectCommunication = ({ projectId, project }) => {
 
   return (
     <div className="communication-tab">
-      {/* Header mejorado con usuarios en línea */}
+      {/* 📊 Header principal con estadísticas */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <div>
           <h5 className="mb-1">
-            <i className="bi bi-chat-left-dots-fill me-2"></i>
+            <i className="bi bi-chat-left-dots-fill me-2 text-primary"></i>
             Chat del Proyecto
             {socketConnected ? (
-              <span className="badge bg-success ms-2">En línea</span>
+              <span className="badge bg-success ms-2">
+                <i className="bi bi-wifi"></i> En línea
+              </span>
             ) : (
-              <span className="badge bg-warning ms-2">Desconectado</span>
+              <span className="badge bg-warning ms-2">
+                <i className="bi bi-wifi-off"></i> Desconectado
+              </span>
             )}
             {totalUnread > 0 && (
-              <span className="badge bg-danger ms-2">{totalUnread} nuevos</span>
+              <span className="badge bg-danger ms-2 pulse">
+                <i className="bi bi-bell-fill"></i> {totalUnread} nuevos
+              </span>
             )}
           </h5>
           <small className="text-muted">
-            {project?.name} • {channels.length} canales • 
+            <i className="bi bi-building me-1"></i>
+            {project?.name} • 
+            <i className="bi bi-hash ms-2 me-1"></i>
+            {channels.length} canales • 
             <span className="text-success ms-1">
-              <i className="bi bi-circle-fill" style={{ fontSize: '8px' }}></i> {getOnlineCount()} en línea
+              <i className="bi bi-circle-fill" style={{ fontSize: '8px' }}></i> 
+              {getOnlineCount()} en línea
             </span>
           </small>
         </div>
@@ -619,68 +822,101 @@ const ProjectCommunication = ({ projectId, project }) => {
             onClick={() => setShowMembersPanel(!showMembersPanel)}
             title="Ver miembros del proyecto"
           >
-            <i className="bi bi-people"></i> {projectMembers.length}
+            <i className="bi bi-people-fill"></i> 
+            <span className="badge bg-secondary ms-1">{projectMembers.length}</span>
           </button>
-          <button
-            className="btn btn-sm btn-primary"
-            onClick={() => setShowCreateChannelModal(true)}
-            disabled={!projectId}
-          >
-            <i className="bi bi-plus"></i> Canal
-          </button>
+          {canManageMembers() && (
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => setShowCreateChannelModal(true)}
+              disabled={!projectId}
+              title="Crear nuevo canal"
+            >
+              <i className="bi bi-plus-circle"></i> Canal
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Error */}
+      {/* ⚠️ Error display */}
       {error && (
-        <div className="alert alert-warning alert-dismissible fade show">
+        <div className="alert alert-warning alert-dismissible fade show mb-3">
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
           {error}
           <button type="button" className="btn-close" onClick={() => setError(null)}></button>
         </div>
       )}
 
-      <div className="row">
-        {/* Sidebar de Canales */}
+      <div className="row g-3">
+        {/* 💬 Sidebar de Canales */}
         <div className="col-md-3">
-          <div className="card" style={{ height: '450px' }}>
-            <div className="card-header bg-light">
-              <strong>Canales</strong>
-              <span className="badge bg-primary ms-2">{channels.length}</span>
+          <div className="card h-100" style={{ minHeight: '500px' }}>
+            <div className="card-header bg-light d-flex justify-content-between align-items-center">
+              <strong>
+                <i className="bi bi-hash me-1"></i>
+                Canales
+              </strong>
+              <span className="badge bg-primary">{channels.length}</span>
             </div>
             <div className="card-body p-0" style={{ overflowY: 'auto' }}>
               {channels.length === 0 ? (
-                <div className="text-center p-3 text-muted">
-                  <i className="bi bi-chat-dots fs-4 d-block mb-2"></i>
-                  <p className="small">No hay canales</p>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => setShowCreateChannelModal(true)}
-                  >
-                    Crear canal
-                  </button>
+                <div className="text-center p-4 text-muted">
+                  <i className="bi bi-chat-dots fs-1 d-block mb-3 opacity-50"></i>
+                  <h6>No hay canales</h6>
+                  <p className="small">Los canales aparecerán aquí una vez creados</p>
+                  {canManageMembers() && (
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => setShowCreateChannelModal(true)}
+                    >
+                      <i className="bi bi-plus-circle me-1"></i>
+                      Crear canal
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="list-group list-group-flush">
                   {channels.map((channel) => {
                     const unreadCount = unreadCounts.get(channel._id) || 0;
                     const isActive = activeChannel?._id === channel._id;
+                    const channelMemberCount = channelMembers.get(channel._id)?.length || 0;
                     
                     return (
                       <button
                         key={channel._id}
-                        className={`list-group-item list-group-item-action py-2 ${
+                        className={`list-group-item list-group-item-action py-3 ${
                           isActive ? 'active' : ''
                         }`}
                         onClick={() => switchToChannel(channel)}
                       >
-                        <div className="d-flex justify-content-between align-items-center">
-                          <span className="small">
-                            <strong># {channel.name}</strong>
-                          </span>
-                          {unreadCount > 0 && !isActive && (
-                            <span className="badge bg-danger rounded-pill">
-                              {unreadCount}
-                            </span>
+                        <div className="d-flex justify-content-between align-items-start">
+                          <div className="flex-grow-1 min-width-0">
+                            <div className="d-flex align-items-center mb-1">
+                              <i className={`bi ${channel.isPrivate ? 'bi-lock-fill' : 'bi-hash'} me-2`}></i>
+                              <strong className="text-truncate">{channel.name}</strong>
+                              {unreadCount > 0 && !isActive && (
+                                <span className="badge bg-danger rounded-pill ms-2 pulse">
+                                  {unreadCount}
+                                </span>
+                              )}
+                            </div>
+                            <small className={`${isActive ? 'text-white-50' : 'text-muted'}`}>
+                              <i className="bi bi-people me-1"></i>
+                              {channelMemberCount} miembros
+                            </small>
+                          </div>
+                          {isActive && canManageMembers() && (
+                            <button
+                              className="btn btn-sm btn-outline-light"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedChannelForMembers(channel);
+                                setShowChannelMembersModal(true);
+                              }}
+                              title="Gestionar miembros del canal"
+                            >
+                              <i className="bi bi-gear"></i>
+                            </button>
                           )}
                         </div>
                       </button>
@@ -692,83 +928,107 @@ const ProjectCommunication = ({ projectId, project }) => {
           </div>
         </div>
 
-        {/* Área Principal de Chat */}
+        {/* 💻 Área Principal de Chat */}
         <div className={`col-md-${showMembersPanel ? '6' : '9'}`}>
-          <div className="card" style={{ height: '450px' }}>
+          <div className="card h-100" style={{ minHeight: '500px' }}>
             {activeChannel ? (
               <>
-                {/* Header del Chat */}
-                <div className="card-header d-flex justify-content-between align-items-center">
+                {/* 📋 Header del Chat */}
+                <div className="card-header d-flex justify-content-between align-items-center bg-white border-bottom">
                   <div>
-                    <strong># {activeChannel.name}</strong>
-                    <small className="text-muted ms-2">
-                      {messages.length} mensajes
+                    <h6 className="mb-0">
+                      <i className={`bi ${activeChannel.isPrivate ? 'bi-lock-fill text-warning' : 'bi-hash text-primary'} me-2`}></i>
+                      {activeChannel.name}
+                    </h6>
+                    <small className="text-muted">
+                      <i className="bi bi-chat-text me-1"></i>
+                      {messages.length} mensajes • 
+                      <i className="bi bi-people me-1 ms-2"></i>
+                      {getCurrentChannelMembers().length} miembros
                     </small>
                   </div>
-                  <small className="text-muted">
-                    {socketConnected ? '🟢 En vivo' : '🔴 Desconectado'}
-                  </small>
+                  <div className="d-flex align-items-center">
+                    <small className={`badge ${socketConnected ? 'bg-success' : 'bg-warning'} me-2`}>
+                      <i className={`bi ${socketConnected ? 'bi-wifi' : 'bi-wifi-off'}`}></i>
+                      {socketConnected ? 'En vivo' : 'Desconectado'}
+                    </small>
+                    {canManageMembers() && (
+                      <button
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => {
+                          setSelectedChannelForMembers(activeChannel);
+                          setShowChannelMembersModal(true);
+                        }}
+                        title="Gestionar miembros del canal"
+                      >
+                        <i className="bi bi-gear"></i>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Mensajes */}
+                {/* 📨 Área de Mensajes */}
                 <div 
                   ref={messagesContainerRef}
-                  className="card-body" 
+                  className="card-body flex-grow-1" 
                   style={{ 
-                    height: '320px',
+                    height: '350px',
                     overflowY: 'auto',
                     backgroundColor: '#f8f9fa'
                   }}
                 >
                   {messages.length === 0 ? (
-                    <div className="text-center text-muted py-4">
-                      <i className="bi bi-chat-text fs-1 d-block mb-2"></i>
-                      <p>¡Inicia la conversación!</p>
+                    <div className="text-center text-muted py-5">
+                      <i className="bi bi-chat-text display-1 mb-3 opacity-25"></i>
+                      <h6>Canal limpio</h6>
+                      <p className="small">¡Sé el primero en enviar un mensaje en #{activeChannel.name}!</p>
                     </div>
                   ) : (
                     <div>
                       {messages.map((message) => (
-                        <div key={message._id} className="mb-2">
+                        <div key={message._id} className="mb-3">
                           {message.type === 'activity' ? (
-                            /* 🆕 Mensaje de actividad del sistema */
-                            <div className="text-center my-2">
-                              <small className="badge bg-secondary">
-                                <i className="bi bi-info-circle me-1"></i>
+                            /* 🔔 Mensaje de actividad del sistema */
+                            <div className="text-center my-3">
+                              <small className="badge bg-secondary px-3 py-2">
+                                <i className="bi bi-info-circle me-2"></i>
                                 {message.content}
                               </small>
                             </div>
                           ) : (
-                            /* Mensaje normal */
+                            /* 💬 Mensaje normal */
                             <div className="d-flex align-items-start">
-                              <div className="position-relative me-2">
+                              <div className="position-relative me-3">
                                 <img 
                                   src={generateAvatarUrl(message.sender?.name)}
                                   className="rounded-circle flex-shrink-0"
-                                  style={{ width: '24px', height: '24px' }}
+                                  style={{ width: '32px', height: '32px' }}
                                   alt={message.sender?.name}
                                 />
-                                {/* 🆕 Indicador de estado en línea */}
+                                {/* 🟢 Indicador de estado en línea */}
                                 {isUserOnline(message.sender?._id) && (
                                   <span 
                                     className="position-absolute bottom-0 end-0 bg-success border border-white rounded-circle"
-                                    style={{ width: '8px', height: '8px' }}
+                                    style={{ width: '10px', height: '10px' }}
                                     title="En línea"
                                   ></span>
                                 )}
                               </div>
                               <div className="flex-grow-1 min-width-0">
-                                <div className="d-flex align-items-baseline">
-                                  <strong className="small me-2">
+                                <div className="d-flex align-items-baseline mb-1">
+                                  <strong className="me-2 text-primary">
                                     {message.sender?.name || 'Usuario'}
                                   </strong>
                                   <small className="text-muted">
                                     {formatMessageTime(message.createdAt)}
                                   </small>
                                   {message.sender?._id === user?.id && (
-                                    <small className="badge bg-light text-dark ms-1">Tú</small>
+                                    <small className="badge bg-light text-dark ms-2">Tú</small>
                                   )}
                                 </div>
-                                <div className="small mt-1">{message.content}</div>
+                                <div className="bg-white p-3 rounded-3 shadow-sm border">
+                                  {message.content}
+                                </div>
                               </div>
                             </div>
                           )}
@@ -779,10 +1039,10 @@ const ProjectCommunication = ({ projectId, project }) => {
                   )}
                 </div>
 
-                {/* Input de Mensaje */}
-                <div className="card-footer">
+                {/* ✍️ Input de Mensaje */}
+                <div className="card-footer bg-white border-top">
                   <form onSubmit={sendMessage}>
-                    <div className="input-group input-group-sm">
+                    <div className="input-group">
                       <input
                         type="text"
                         className="form-control"
@@ -793,54 +1053,75 @@ const ProjectCommunication = ({ projectId, project }) => {
                         maxLength={1000}
                       />
                       <button 
-                        className="btn btn-outline-primary" 
+                        className="btn btn-primary" 
                         type="submit"
                         disabled={!newMessage.trim() || !socketConnected}
                       >
-                        <i className="bi bi-send"></i>
+                        <i className="bi bi-send-fill"></i>
                       </button>
                     </div>
+                    {!socketConnected && (
+                      <small className="text-warning mt-1 d-block">
+                        <i className="bi bi-exclamation-triangle me-1"></i>
+                        Desconectado - Los mensajes no se enviarán
+                      </small>
+                    )}
                   </form>
                 </div>
               </>
             ) : (
+              /* 🔍 Estado sin canal seleccionado */
               <div className="d-flex align-items-center justify-content-center h-100">
                 <div className="text-center text-muted">
-                  <i className="bi bi-chat-square-dots fs-1 d-block mb-2"></i>
-                  <h6>Selecciona un canal</h6>
-                  <p className="small">Elige un canal para comenzar a chatear</p>
+                  <i className="bi bi-chat-square-dots display-1 mb-3 opacity-25"></i>
+                  <h5>Selecciona un canal</h5>
+                  <p>Elige un canal de la lista para comenzar a chatear</p>
+                  {channels.length === 0 && canManageMembers() && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => setShowCreateChannelModal(true)}
+                    >
+                      <i className="bi bi-plus-circle me-2"></i>
+                      Crear primer canal
+                    </button>
+                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* 🆕 Panel de Miembros del Proyecto */}
+        {/* 👥 Panel de Miembros del Proyecto */}
         {showMembersPanel && (
           <div className="col-md-3">
-            <div className="card" style={{ height: '450px' }}>
+            <div className="card h-100" style={{ minHeight: '500px' }}>
               <div className="card-header bg-light d-flex justify-content-between align-items-center">
-                <strong>Miembros ({projectMembers.length})</strong>
+                <strong>
+                  <i className="bi bi-people-fill me-1"></i>
+                  Miembros ({projectMembers.length})
+                </strong>
                 <button 
                   className="btn btn-sm btn-outline-secondary"
                   onClick={() => setShowMembersPanel(false)}
+                  title="Cerrar panel"
                 >
-                  <i className="bi bi-x"></i>
+                  <i className="bi bi-x-lg"></i>
                 </button>
               </div>
               <div className="card-body p-2" style={{ overflowY: 'auto' }}>
                 {projectMembers.length === 0 ? (
-                  <div className="text-center text-muted p-3">
-                    <i className="bi bi-people fs-4 d-block mb-2"></i>
-                    <p className="small">No hay miembros</p>
+                  <div className="text-center text-muted p-4">
+                    <i className="bi bi-people fs-1 d-block mb-3 opacity-25"></i>
+                    <h6>No hay miembros</h6>
+                    <p className="small">Los miembros aparecerán aquí</p>
                   </div>
                 ) : (
                   <div>
-                    {/* 🆕 Sección de usuarios en línea */}
-                    {onlineUsers.length > 0 && (
-                      <div className="mb-2">
-                        <h6 className="text-success small">
-                          <i className="bi bi-circle-fill" style={{ fontSize: '8px' }}></i> 
+                    {/* 🟢 Sección de usuarios en línea */}
+                    {getOnlineCount() > 0 && (
+                      <div className="mb-3">
+                        <h6 className="text-success small mb-2">
+                          <i className="bi bi-circle-fill me-1" style={{ fontSize: '8px' }}></i> 
                           En línea ({getOnlineCount()})
                         </h6>
                         {onlineUsers.filter(u => u.isOnline).map((onlineUser) => {
@@ -850,18 +1131,18 @@ const ProjectCommunication = ({ projectId, project }) => {
                           const isCurrentUser = member._id === user?.id;
                           
                           return (
-                            <div key={onlineUser.userId} className="d-flex align-items-center justify-content-between p-1 mb-1">
+                            <div key={onlineUser.userId} className="d-flex align-items-center justify-content-between p-2 mb-1 bg-light rounded">
                               <div className="d-flex align-items-center flex-grow-1">
                                 <div className="position-relative me-2">
                                   <img 
                                     src={generateAvatarUrl(member.name)}
                                     className="rounded-circle"
-                                    style={{ width: '24px', height: '24px' }}
+                                    style={{ width: '28px', height: '28px' }}
                                     alt={member.name}
                                   />
                                   <span 
                                     className="position-absolute bottom-0 end-0 bg-success border border-white rounded-circle"
-                                    style={{ width: '6px', height: '6px' }}
+                                    style={{ width: '8px', height: '8px' }}
                                   ></span>
                                 </div>
                                 <div className="flex-grow-1 min-width-0">
@@ -869,52 +1150,52 @@ const ProjectCommunication = ({ projectId, project }) => {
                                     {member.name}
                                     {isCurrentUser && <span className="text-muted"> (Tú)</span>}
                                   </div>
-                                  <div className="text-muted" style={{ fontSize: '10px' }}>
+                                  <div className="text-muted" style={{ fontSize: '11px' }}>
                                     {member.isOwner ? '👑 Propietario' : `📋 ${member.role || 'Miembro'}`}
                                   </div>
                                 </div>
                               </div>
                               
-                              {/* 🆕 Botón para eliminar miembro */}
+                              {/* 🗑️ Botón para eliminar miembro */}
                               {canManageMembers() && !member.isOwner && !isCurrentUser && (
                                 <button
                                   className="btn btn-sm btn-outline-danger"
                                   onClick={() => handleRemoveMember(member)}
                                   title="Eliminar del proyecto"
-                                  style={{ fontSize: '10px', padding: '1px 4px' }}
+                                  style={{ fontSize: '11px', padding: '2px 6px' }}
                                 >
-                                  <i className="bi bi-trash" style={{ fontSize: '10px' }}></i>
+                                  <i className="bi bi-trash" style={{ fontSize: '11px' }}></i>
                                 </button>
                               )}
                             </div>
                           );
                         })}
-                        <hr className="my-2" />
+                        <hr className="my-3" />
                       </div>
                     )}
 
-                    {/* 🆕 Sección de usuarios fuera de línea */}
+                    {/* ⚫ Sección de usuarios fuera de línea */}
                     <div>
-                      <h6 className="text-muted small">
-                        <i className="bi bi-circle" style={{ fontSize: '8px' }}></i> 
+                      <h6 className="text-muted small mb-2">
+                        <i className="bi bi-circle me-1" style={{ fontSize: '8px' }}></i> 
                         Fuera de línea ({projectMembers.length - getOnlineCount()})
                       </h6>
                       {projectMembers.filter(member => !isUserOnline(member._id)).map((member) => {
                         const isCurrentUser = member._id === user?.id;
                         
                         return (
-                          <div key={member._id} className="d-flex align-items-center justify-content-between p-1 mb-1">
+                          <div key={member._id} className="d-flex align-items-center justify-content-between p-2 mb-1 rounded">
                             <div className="d-flex align-items-center flex-grow-1">
                               <div className="position-relative me-2">
                                 <img 
                                   src={generateAvatarUrl(member.name)}
                                   className="rounded-circle"
-                                  style={{ width: '24px', height: '24px', opacity: 0.6 }}
+                                  style={{ width: '28px', height: '28px', opacity: 0.6 }}
                                   alt={member.name}
                                 />
                                 <span 
                                   className="position-absolute bottom-0 end-0 bg-secondary border border-white rounded-circle"
-                                  style={{ width: '6px', height: '6px' }}
+                                  style={{ width: '8px', height: '8px' }}
                                 ></span>
                               </div>
                               <div className="flex-grow-1 min-width-0">
@@ -922,21 +1203,21 @@ const ProjectCommunication = ({ projectId, project }) => {
                                   {member.name}
                                   {isCurrentUser && <span className="text-muted"> (Tú)</span>}
                                 </div>
-                                <div className="text-muted" style={{ fontSize: '10px' }}>
+                                <div className="text-muted" style={{ fontSize: '11px' }}>
                                   {member.isOwner ? '👑 Propietario' : `📋 ${member.role || 'Miembro'}`}
                                 </div>
                               </div>
                             </div>
                             
-                            {/* 🆕 Botón para eliminar miembro */}
+                            {/* 🗑️ Botón para eliminar miembro */}
                             {canManageMembers() && !member.isOwner && !isCurrentUser && (
                               <button
                                 className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleRemoveMember(member)}
                                 title="Eliminar del proyecto"
-                                style={{ fontSize: '10px', padding: '1px 4px' }}
+                                style={{ fontSize: '11px', padding: '2px 6px' }}
                               >
-                                <i className="bi bi-trash" style={{ fontSize: '10px' }}></i>
+                                <i className="bi bi-trash" style={{ fontSize: '11px' }}></i>
                               </button>
                             )}
                           </div>
@@ -951,13 +1232,20 @@ const ProjectCommunication = ({ projectId, project }) => {
         )}
       </div>
 
-      {/* Modal Crear Canal */}
+      {/* =================================================================
+          🎭 MODALES
+          ================================================================= */}
+
+      {/* 🆕 Modal para Crear Canal */}
       {showCreateChannelModal && (
         <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-sm">
+          <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
-                <h6 className="modal-title">Crear Canal</h6>
+                <h5 className="modal-title">
+                  <i className="bi bi-plus-circle me-2"></i>
+                  Crear Nuevo Canal
+                </h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -967,37 +1255,80 @@ const ProjectCommunication = ({ projectId, project }) => {
               <form onSubmit={createChannel}>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">Nombre</label>
+                    <label className="form-label">
+                      <i className="bi bi-hash me-1"></i>
+                      Nombre del canal
+                    </label>
                     <input
                       type="text"
-                      className="form-control form-control-sm"
+                      className="form-control"
                       value={newChannelData.name}
-                      onChange={(e) => setNewChannelData(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="ej: general, desarrollo"
+                      onChange={(e) => setNewChannelData(prev => ({ 
+                        ...prev, 
+                        name: e.target.value.toLowerCase().replace(/\s+/g, '-') 
+                      }))}
+                      placeholder="ej: general, desarrollo, diseño"
                       required
+                      maxLength={50}
+                    />
+                    <div className="form-text">
+                      Los nombres deben ser únicos y usar solo letras, números y guiones.
+                    </div>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label">
+                      <i className="bi bi-text-paragraph me-1"></i>
+                      Descripción (opcional)
+                    </label>
+                    <textarea
+                      className="form-control"
+                      rows="2"
+                      value={newChannelData.description}
+                      onChange={(e) => setNewChannelData(prev => ({ 
+                        ...prev, 
+                        description: e.target.value 
+                      }))}
+                      placeholder="Describe para qué es este canal..."
+                      maxLength={200}
                     />
                   </div>
-                  <div className="mb-3">
-                    <label className="form-label">Descripción</label>
+
+                  <div className="form-check">
                     <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      value={newChannelData.description}
-                      onChange={(e) => setNewChannelData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Opcional"
+                      className="form-check-input"
+                      type="checkbox"
+                      id="isPrivateChannel"
+                      checked={newChannelData.isPrivate}
+                      onChange={(e) => setNewChannelData(prev => ({ 
+                        ...prev, 
+                        isPrivate: e.target.checked 
+                      }))}
                     />
+                    <label className="form-check-label" htmlFor="isPrivateChannel">
+                      <i className="bi bi-lock me-1"></i>
+                      Canal privado
+                    </label>
+                    <div className="form-text">
+                      Los canales privados requieren invitación para unirse.
+                    </div>
                   </div>
                 </div>
                 <div className="modal-footer">
                   <button
                     type="button"
-                    className="btn btn-sm btn-secondary"
+                    className="btn btn-secondary"
                     onClick={() => setShowCreateChannelModal(false)}
                   >
                     Cancelar
                   </button>
-                  <button type="submit" className="btn btn-sm btn-primary">
-                    Crear
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={!newChannelData.name.trim()}
+                  >
+                    <i className="bi bi-plus-circle me-1"></i>
+                    Crear Canal
                   </button>
                 </div>
               </form>
@@ -1006,16 +1337,16 @@ const ProjectCommunication = ({ projectId, project }) => {
         </div>
       )}
 
-      {/* 🆕 Modal Confirmar Eliminación de Miembro */}
+      {/* 🗑️ Modal para Confirmar Eliminación de Miembro */}
       {showRemoveMemberModal && memberToRemove && (
         <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
-                <h6 className="modal-title text-danger">
+                <h5 className="modal-title text-danger">
                   <i className="bi bi-exclamation-triangle me-2"></i>
                   Confirmar Eliminación
-                </h6>
+                </h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -1023,13 +1354,28 @@ const ProjectCommunication = ({ projectId, project }) => {
                 ></button>
               </div>
               <div className="modal-body">
-                <p>¿Estás seguro que deseas eliminar a <strong>{memberToRemove.name}</strong> del proyecto?</p>
                 <div className="alert alert-warning">
-                  <i className="bi bi-exclamation-triangle"></i> Esta acción no se puede deshacer. El usuario perderá acceso a todas las conversaciones y archivos del proyecto.
+                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  <strong>¿Estás seguro?</strong>
+                  <p className="mb-0 mt-2">
+                    Vas a eliminar a <strong>{memberToRemove.name}</strong> del proyecto.
+                    Esta acción no se puede deshacer.
+                  </p>
+                </div>
+                
+                <div className="alert alert-danger">
+                  <h6><i className="bi bi-info-circle me-2"></i>Consecuencias:</h6>
+                  <ul className="mb-0">
+                    <li>Perderá acceso a todas las conversaciones</li>
+                    <li>No podrá ver archivos del proyecto</li>
+                    <li>Será removido de todos los canales</li>
+                    <li>Sus tareas asignadas quedarán sin asignar</li>
+                  </ul>
                 </div>
                 
                 <div className="mb-3">
                   <label htmlFor="removeReason" className="form-label">
+                    <i className="bi bi-chat-text me-1"></i>
                     Razón (opcional):
                   </label>
                   <textarea
@@ -1039,6 +1385,7 @@ const ProjectCommunication = ({ projectId, project }) => {
                     placeholder="Explica por qué estás removiendo a este miembro..."
                     value={removeReason}
                     onChange={(e) => setRemoveReason(e.target.value)}
+                    maxLength={500}
                   />
                 </div>
               </div>
@@ -1063,6 +1410,173 @@ const ProjectCommunication = ({ projectId, project }) => {
           </div>
         </div>
       )}
+
+      {/* 👥 Modal para Gestión de Miembros del Canal */}
+      {showChannelMembersModal && selectedChannelForMembers && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-lg">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <i className="bi bi-people me-2"></i>
+                  Gestionar Miembros - #{selectedChannelForMembers.name}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowChannelMembersModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="row">
+                  {/* Miembros actuales del canal */}
+                  <div className="col-md-6">
+                    <h6 className="text-primary">
+                      <i className="bi bi-check-circle me-1"></i>
+                      En el canal ({getCurrentChannelMembers().length})
+                    </h6>
+                    <div className="border rounded p-2" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                      {getCurrentChannelMembers().length === 0 ? (
+                        <div className="text-center text-muted p-3">
+                          <i className="bi bi-people fs-4 d-block mb-2 opacity-50"></i>
+                          <p className="small">No hay miembros en este canal</p>
+                        </div>
+                      ) : (
+                        getCurrentChannelMembers().map((member) => (
+                          <div key={member._id} className="d-flex justify-content-between align-items-center p-2 border-bottom">
+                            <div className="d-flex align-items-center">
+                              <img 
+                                src={generateAvatarUrl(member.name)}
+                                className="rounded-circle me-2"
+                                style={{ width: '24px', height: '24px' }}
+                                alt={member.name}
+                              />
+                              <div>
+                                <div className="small fw-bold">{member.name}</div>
+                                <div className="text-muted" style={{ fontSize: '11px' }}>
+                                  {member.role || 'Miembro'}
+                                </div>
+                              </div>
+                            </div>
+                            {member._id !== user?.id && !member.isOwner && (
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => removeMemberFromChannel(selectedChannelForMembers._id, member._id)}
+                                title="Remover del canal"
+                              >
+                                <i className="bi bi-x" style={{ fontSize: '12px' }}></i>
+                              </button>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Miembros disponibles para agregar */}
+                  <div className="col-md-6">
+                    <h6 className="text-secondary">
+                      <i className="bi bi-plus-circle me-1"></i>
+                      Disponibles para agregar
+                    </h6>
+                    <div className="border rounded p-2" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                      {projectMembers.filter(member => 
+                        !getCurrentChannelMembers().some(channelMember => channelMember._id === member._id)
+                      ).length === 0 ? (
+                        <div className="text-center text-muted p-3">
+                          <i className="bi bi-check-all fs-4 d-block mb-2 opacity-50"></i>
+                          <p className="small">Todos los miembros ya están en el canal</p>
+                        </div>
+                      ) : (
+                        projectMembers.filter(member => 
+                          !getCurrentChannelMembers().some(channelMember => channelMember._id === member._id)
+                        ).map((member) => (
+                          <div key={member._id} className="d-flex justify-content-between align-items-center p-2 border-bottom">
+                            <div className="d-flex align-items-center">
+                              <img 
+                                src={generateAvatarUrl(member.name)}
+                                className="rounded-circle me-2"
+                                style={{ width: '24px', height: '24px' }}
+                                alt={member.name}
+                              />
+                              <div>
+                                <div className="small fw-bold">{member.name}</div>
+                                <div className="text-muted" style={{ fontSize: '11px' }}>
+                                  {member.role || 'Miembro'}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              className="btn btn-sm btn-outline-success"
+                              onClick={() => addMemberToChannel(selectedChannelForMembers._id, member._id)}
+                              title="Agregar al canal"
+                            >
+                              <i className="bi bi-plus" style={{ fontSize: '12px' }}></i>
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowChannelMembersModal(false)}
+                >
+                  <i className="bi bi-check me-1"></i>
+                  Listo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎨 Estilos CSS adicionales */}
+      <style jsx>{`
+        .pulse {
+          animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+          }
+          70% {
+            box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+          }
+        }
+        
+        .hover-bg-light:hover {
+          background-color: rgba(0, 0, 0, 0.05) !important;
+        }
+        
+        .min-width-0 {
+          min-width: 0;
+        }
+        
+        .card {
+          transition: all 0.2s ease-in-out;
+        }
+        
+        .list-group-item {
+          transition: all 0.2s ease-in-out;
+        }
+        
+        .list-group-item:hover {
+          transform: translateX(2px);
+        }
+        
+        .badge {
+          font-size: 0.7em;
+        }
+      `}</style>
     </div>
   );
 };

@@ -210,5 +210,90 @@ const updateProject = async (projectId, projectData) => {
   }
 };
 
+
+// client/src/services/projectService.js - Agregar estas funciones
+
+// 🗑️ ELIMINAR MIEMBRO DEL EQUIPO
+export const removeTeamMember = async (projectId, userId) => {
+  try {
+    console.log('🗑️ Eliminando miembro:', { projectId, userId });
+    
+    const token = localStorage.getItem('planifica_token');
+    if (!token) {
+      throw new Error('Token no encontrado');
+    }
+
+    const response = await fetch(`http://localhost:3001/api/projects/${projectId}/members/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error al eliminar miembro');
+    }
+
+    console.log('✅ Miembro eliminado exitosamente:', data);
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Error en removeTeamMember:', error);
+    throw error;
+  }
+};
+
+// 🔍 OBTENER PERMISOS DEL USUARIO EN EL PROYECTO
+export const getUserProjectPermissions = async (projectId) => {
+  try {
+    console.log('🔍 Obteniendo permisos para proyecto:', projectId);
+    
+    const token = localStorage.getItem('planifica_token');
+    if (!token) {
+      throw new Error('Token no encontrado');
+    }
+
+    const response = await fetch(`http://localhost:3001/api/projects/${projectId}/permissions`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error al obtener permisos');
+    }
+
+    console.log('✅ Permisos obtenidos:', data.data);
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Error en getUserProjectPermissions:', error);
+    throw error;
+  }
+};
+
+// 💬 ELIMINAR USUARIO DEL CHAT (función auxiliar)
+export const removeUserFromChat = async (projectId, userId) => {
+  try {
+    console.log('💬 Eliminando usuario del chat:', { projectId, userId });
+    
+    // Esta función se puede expandir cuando implementes chat rooms específicos
+    // Por ahora, la eliminación del proyecto también lo elimina del chat
+    
+    return await removeTeamMember(projectId, userId);
+    
+  } catch (error) {
+    console.error('❌ Error en removeUserFromChat:', error);
+    throw error;
+  }
+};
+
 export default projectService;
 
