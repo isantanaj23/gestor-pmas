@@ -65,7 +65,7 @@ app.use(compression());
 // 🔥 CORS CORREGIDO - INCLUIR PATCH
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    origin: ["http://localhost:3000","http://127.0.0.1:3000", "http://148.230.87.57"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
