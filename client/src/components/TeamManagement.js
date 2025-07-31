@@ -1,25 +1,46 @@
+// client/src/components/TeamManagement.js - VERSIÓN LIMPIA CON NOTIFICACIONES
+
 import React, { useState, useEffect } from 'react';
+import { projectService } from '../services/projectService';
 
 function TeamManagement({ project, onTeamUpdate }) {
   const [team, setTeam] = useState(project?.team || []);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [newMemberData, setNewMemberData] = useState({ 
     userId: '', 
-    role: 'viewer',
+    role: 'developer',
     permissions: {
       canViewTasks: true,
-      canCreateTasks: false,
-      canEditTasks: false,
+      canCreateTasks: true,
+      canEditTasks: true,
       canDeleteTasks: false,
       canManageTeam: false,
       canEditProject: false
     }
   });
 
-  // Sistema de roles y permisos
+  // 🎨 Sistema de notificaciones usando el existente
+  const showNotification = (type, title, message, color = 'primary') => {
+    // Crear notificación personalizada usando el sistema existente
+    const event = new CustomEvent('show-notification', {
+      detail: {
+        type: type,
+        title: title,
+        message: message,
+        icon: type === 'success' ? 'bi-check-circle' : 
+              type === 'error' ? 'bi-x-circle' : 
+              type === 'warning' ? 'bi-exclamation-triangle' : 'bi-info-circle',
+        color: color
+      }
+    });
+    window.dispatchEvent(event);
+  };
+
+  // Sistema de roles y permisos - CORREGIDOS
   const rolePermissions = {
     viewer: {
       canViewTasks: true,
@@ -29,7 +50,23 @@ function TeamManagement({ project, onTeamUpdate }) {
       canManageTeam: false,
       canEditProject: false
     },
-    collaborator: {
+    developer: {
+      canViewTasks: true,
+      canCreateTasks: true,
+      canEditTasks: true,
+      canDeleteTasks: false,
+      canManageTeam: false,
+      canEditProject: false
+    },
+    designer: {
+      canViewTasks: true,
+      canCreateTasks: true,
+      canEditTasks: true,
+      canDeleteTasks: false,
+      canManageTeam: false,
+      canEditProject: false
+    },
+    tester: {
       canViewTasks: true,
       canCreateTasks: true,
       canEditTasks: true,
@@ -43,7 +80,7 @@ function TeamManagement({ project, onTeamUpdate }) {
       canEditTasks: true,
       canDeleteTasks: true,
       canManageTeam: true,
-      canEditProject: false
+      canEditProject: true
     },
     admin: {
       canViewTasks: true,
@@ -52,20 +89,32 @@ function TeamManagement({ project, onTeamUpdate }) {
       canDeleteTasks: true,
       canManageTeam: true,
       canEditProject: true
+    },
+    client: {
+      canViewTasks: true,
+      canCreateTasks: false,
+      canEditTasks: false,
+      canDeleteTasks: false,
+      canManageTeam: false,
+      canEditProject: false
     }
   };
 
   const roleLabels = {
     viewer: 'Visualizador',
-    collaborator: 'Colaborador',
+    developer: 'Desarrollador',
+    designer: 'Diseñador',
+    tester: 'Tester/QA',
     manager: 'Gerente',
-    admin: 'Administrador'
+    admin: 'Administrador',
+    client: 'Cliente'
   };
 
   // Cargar usuarios disponibles
   useEffect(() => {
     const loadAvailableUsers = async () => {
       try {
+        // En el proyecto real, esto vendría de la API
         const users = [
           { _id: 'user1', name: 'Roberto Vega', email: 'roberto@empresa.com' },
           { _id: 'user2', name: 'Carmen Torres', email: 'carmen@empresa.com' },
@@ -79,6 +128,7 @@ function TeamManagement({ project, onTeamUpdate }) {
         setAvailableUsers(available);
       } catch (err) {
         console.error('Error cargando usuarios:', err);
+        showNotification('error', 'Error', 'No se pudieron cargar los usuarios disponibles', 'danger');
       }
     };
 
@@ -99,130 +149,178 @@ function TeamManagement({ project, onTeamUpdate }) {
 
   // Agregar miembro
   const handleAddMember = async () => {
+    if (!newMemberData.userId) {
+      showNotification('warning', 'Atención', 'Por favor selecciona un usuario', 'warning');
+      return;
+    }
+
     try {
-      if (!newMemberData.userId) {
-        alert('Por favor selecciona un usuario');
-        return;
-      }
-
-      const selectedUser = availableUsers.find(user => user._id === newMemberData.userId);
-      if (!selectedUser) {
-        alert('Usuario no encontrado');
-        return;
-      }
-
-      const newMember = {
-        ...selectedUser,
-        role: newMemberData.role,
-        permissions: newMemberData.permissions,
-        joinedAt: new Date().toISOString(),
-        status: 'active'
-      };
-
-      const updatedTeam = [...team, newMember];
-      setTeam(updatedTeam);
-      
-      if (onTeamUpdate) {
-        onTeamUpdate(updatedTeam);
-      }
-
-      setShowAddModal(false);
-      setNewMemberData({ 
-        userId: '', 
-        role: 'viewer',
-        permissions: { ...rolePermissions.viewer }
+      const response = await projectService.addMemberToProject(project._id, {
+        userId: newMemberData.userId,
+        role: newMemberData.role
       });
 
-      console.log('Miembro agregado:', newMember);
+      if (response.success) {
+        const addedUser = availableUsers.find(u => u._id === newMemberData.userId);
+        
+        // ✅ NOTIFICACIÓN EN LUGAR DE ALERT
+        showNotification(
+          'success', 
+          '¡Miembro agregado!', 
+          `${addedUser.name} fue agregado como ${roleLabels[newMemberData.role]} al equipo`,
+          'success'
+        );
 
-    } catch (err) {
-      console.error('Error al agregar miembro:', err);
-      alert('Error al agregar miembro al equipo');
-    }
-  };
-
-  // Cambiar rol
-  const handleUpdateMemberRole = async (memberId, newRole) => {
-    try {
-      const updatedTeam = team.map(member => 
-        member._id === memberId 
-          ? { 
-              ...member, 
-              role: newRole,
-              permissions: { ...rolePermissions[newRole] }
-            }
-          : member
-      );
-      
-      setTeam(updatedTeam);
-      
-      if (onTeamUpdate) {
-        onTeamUpdate(updatedTeam);
+        setTeam(response.data.team || []);
+        setShowAddModal(false);
+        setNewMemberData({ userId: '', role: 'developer', permissions: rolePermissions.developer });
+        
+        if (onTeamUpdate) onTeamUpdate(response.data);
+      } else {
+        showNotification('error', 'Error', response.message || 'No se pudo agregar el miembro', 'danger');
       }
-
-      console.log('Rol actualizado para miembro:', memberId);
-
-    } catch (err) {
-      console.error('Error al actualizar rol:', err);
-      alert('Error al actualizar rol del miembro');
+    } catch (error) {
+      console.error('Error agregando miembro:', error);
+      showNotification('error', 'Error', 'Error del servidor al agregar miembro', 'danger');
     }
   };
 
   // Remover miembro
-  const handleRemoveMember = async (memberId) => {
-    try {
-      if (window.confirm('¿Estás seguro de que quieres remover este miembro del equipo?')) {
-        const updatedTeam = team.filter(member => member._id !== memberId);
-        setTeam(updatedTeam);
-        
-        if (onTeamUpdate) {
-          onTeamUpdate(updatedTeam);
-        }
+  const handleRemoveMember = async () => {
+    if (!selectedMember) return;
 
-        console.log('Miembro removido:', memberId);
+    try {
+      const response = await projectService.removeMemberFromProject(project._id, selectedMember._id);
+
+      if (response.success) {
+        // ✅ NOTIFICACIÓN EN LUGAR DE ALERT
+        showNotification(
+          'success',
+          'Miembro removido',
+          `${selectedMember.name} fue removido del equipo`,
+          'info'
+        );
+
+        setTeam(prev => prev.filter(member => member._id !== selectedMember._id));
+        setShowRemoveModal(false);
+        setSelectedMember(null);
+        
+        if (onTeamUpdate) onTeamUpdate({ team: team.filter(m => m._id !== selectedMember._id) });
+      } else {
+        showNotification('error', 'Error', response.message || 'No se pudo remover el miembro', 'danger');
       }
-    } catch (err) {
-      console.error('Error al remover miembro:', err);
-      alert('Error al remover miembro del equipo');
+    } catch (error) {
+      console.error('Error removiendo miembro:', error);
+      showNotification('error', 'Error', 'Error del servidor al remover miembro', 'danger');
     }
   };
 
-  // Abrir modal de permisos
-  const openPermissionsModal = (member) => {
+  // Cambiar rol de miembro
+  const handleUpdateMemberRole = async (memberId, newRole) => {
+    try {
+      const response = await projectService.updateMemberRole(project._id, memberId, newRole);
+
+      if (response.success) {
+        const member = team.find(m => m._id === memberId);
+        
+        // ✅ NOTIFICACIÓN EN LUGAR DE ALERT
+        showNotification(
+          'success',
+          'Rol actualizado',
+          `El rol de ${member.name} fue cambiado a ${roleLabels[newRole]}`,
+          'info'
+        );
+
+        setTeam(prev => prev.map(member => 
+          member._id === memberId 
+            ? { ...member, role: newRole, permissions: rolePermissions[newRole] }
+            : member
+        ));
+      } else {
+        showNotification('error', 'Error', response.message || 'No se pudo actualizar el rol', 'danger');
+      }
+    } catch (error) {
+      console.error('Error actualizando rol:', error);
+      showNotification('error', 'Error', 'Error del servidor al actualizar rol', 'danger');
+    }
+  };
+
+  const openRemoveModal = (member) => {
     setSelectedMember(member);
+    setShowRemoveModal(true);
+  };
+
+  const openPermissionsModal = (member) => {
+    setSelectedMember({
+      ...member,
+      permissions: rolePermissions[member.role] || {}
+    });
     setShowPermissionsModal(true);
   };
 
+  // Construir lista de miembros con owner
+  const allMembers = [
+    // Owner
+    {
+      ...project.owner,
+      projectRole: 'owner',
+      role: 'owner',
+      isOwner: true,
+      canBeRemoved: false,
+      joinedAt: project.createdAt,
+      permissions: rolePermissions.admin
+    },
+    // Team members
+    ...team.map(teamMember => ({
+      ...teamMember,
+      projectRole: teamMember.role,
+      isOwner: false,
+      canBeRemoved: true,
+      permissions: rolePermissions[teamMember.role] || {}
+    }))
+  ];
+
   return (
     <div className="team-management">
+      {/* Header con botón para agregar */}
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h5 className="mb-0">
-          Gestión de Equipo 
-          <span className="badge bg-primary ms-2">{team.length} miembros</span>
-        </h5>
+        <div>
+          <h5 className="mb-1">
+            <i className="bi bi-people-fill me-2"></i>
+            Miembros del Equipo
+          </h5>
+          <small className="text-muted">{allMembers.length} miembros</small>
+        </div>
         <button 
-          className="btn btn-success btn-sm"
+          className="btn btn-primary btn-sm"
           onClick={() => setShowAddModal(true)}
         >
-          <i className="bi bi-person-plus"></i> Agregar Miembro
+          <i className="bi bi-person-plus me-1"></i>
+          Agregar Miembro
         </button>
       </div>
 
+      {/* Lista de miembros */}
       <div className="row">
-        {team.map(member => (
+        {allMembers.map(member => (
           <div key={member._id} className="col-md-6 col-lg-4 mb-3">
             <div className="card h-100">
-              <div className="card-body">
+              <div className="card-body p-3">
                 <div className="d-flex align-items-center mb-3">
-                  <div 
-                    className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3"
-                    style={{ width: '40px', height: '40px' }}
-                  >
-                    {member.name.split(' ').map(n => n[0]).join('')}
-                  </div>
-                  <div className="flex-grow-1">
-                    <h6 className="mb-0">{member.name}</h6>
-                    <small className="text-muted">{member.email}</small>
+                  <img
+                    src={member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&size=50&background=random`}
+                    alt={member.name}
+                    className="rounded-circle me-3"
+                    style={{ width: '50px', height: '50px', objectFit: 'cover' }}
+                  />
+                  <div className="flex-grow-1 min-w-0">
+                    <div className="d-flex align-items-center">
+                      <h6 className="mb-0 text-truncate">{member.name}</h6>
+                      {member.isOwner && (
+                        <span className="badge bg-warning ms-2">Propietario</span>
+                      )}
+                    </div>
+                    <div className="small text-muted text-truncate">{member.email}</div>
                     {member.department && (
                       <div><small className="text-muted">{member.department}</small></div>
                     )}
@@ -235,6 +333,7 @@ function TeamManagement({ project, onTeamUpdate }) {
                     className="form-select form-select-sm"
                     value={member.role}
                     onChange={(e) => handleUpdateMemberRole(member._id, e.target.value)}
+                    disabled={member.isOwner}
                   >
                     {Object.entries(roleLabels).map(([value, label]) => (
                       <option key={value} value={value}>{label}</option>
@@ -267,12 +366,14 @@ function TeamManagement({ project, onTeamUpdate }) {
                   >
                     <i className="bi bi-gear"></i> Permisos
                   </button>
-                  <button 
-                    className="btn btn-sm btn-outline-danger"
-                    onClick={() => handleRemoveMember(member._id)}
-                  >
-                    <i className="bi bi-person-dash"></i> Remover
-                  </button>
+                  {member.canBeRemoved && (
+                    <button 
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={() => openRemoveModal(member)}
+                    >
+                      <i className="bi bi-person-dash"></i> Remover
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -280,20 +381,16 @@ function TeamManagement({ project, onTeamUpdate }) {
         ))}
       </div>
 
-      {team.length === 0 && (
-        <div className="text-center py-4">
-          <i className="bi bi-people text-muted" style={{ fontSize: '3rem' }}></i>
-          <h5 className="text-muted mt-3">No hay miembros en el equipo</h5>
-          <p className="text-muted">Agrega miembros para colaborar en este proyecto</p>
-        </div>
-      )}
-
+      {/* Modal para agregar miembro */}
       {showAddModal && (
         <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Agregar Miembro al Equipo</h5>
+                <h5 className="modal-title">
+                  <i className="bi bi-person-plus me-2"></i>
+                  Agregar Miembro al Equipo
+                </h5>
                 <button 
                   type="button" 
                   className="btn-close" 
@@ -304,13 +401,13 @@ function TeamManagement({ project, onTeamUpdate }) {
                 <div className="row">
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">Seleccionar Usuario</label>
+                      <label className="form-label">Usuario</label>
                       <select 
                         className="form-select"
                         value={newMemberData.userId}
                         onChange={(e) => setNewMemberData({...newMemberData, userId: e.target.value})}
                       >
-                        <option value="">Selecciona un usuario...</option>
+                        <option value="">Seleccionar usuario...</option>
                         {availableUsers.map(user => (
                           <option key={user._id} value={user._id}>
                             {user.name} ({user.email})
@@ -376,6 +473,54 @@ function TeamManagement({ project, onTeamUpdate }) {
         </div>
       )}
 
+      {/* Modal para remover miembro */}
+      {showRemoveModal && selectedMember && (
+        <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <i className="bi bi-person-dash me-2"></i>
+                  Remover Miembro
+                </h5>
+                <button 
+                  type="button" 
+                  className="btn-close" 
+                  onClick={() => setShowRemoveModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="alert alert-warning">
+                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  <strong>¿Estás seguro?</strong>
+                </div>
+                <p>
+                  Vas a remover a <strong>{selectedMember.name}</strong> del equipo. 
+                  Esta acción no se puede deshacer.
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setShowRemoveModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-danger"
+                  onClick={handleRemoveMember}
+                >
+                  Remover del Equipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de permisos */}
       {showPermissionsModal && selectedMember && (
         <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog">

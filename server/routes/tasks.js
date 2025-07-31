@@ -104,51 +104,75 @@ router.get('/my-tasks', async (req, res) => {
 
 // Agregar esta ruta a tu archivo server/routes/tasks.js
 
-// @desc    Obtener detalles de una tarea específica
+
+// @desc    Obtener detalles de una tarea específica  
 // @route   GET /api/tasks/:id
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
     const taskId = req.params.id;
     
-    console.log('🔍 Buscando tarea con ID:', taskId);
+    console.log('🔍 === DEBUG GET TASK ===');
+    console.log('🔍 TaskId recibido:', taskId);
+    console.log('🔍 Usuario:', req.user?.name || req.user?.email);
+    console.log('🔍 Timestamp:', new Date().toISOString());
 
     // Verificar si es un ObjectId válido
     if (!mongoose.Types.ObjectId.isValid(taskId)) {
+      console.log('❌ ObjectId inválido:', taskId);
       return res.status(400).json({
         success: false,
         message: 'ID de tarea inválido'
       });
     }
 
-    // Buscar la tarea con datos poblados
-    const task = await Task.findById(taskId)
+    console.log('✅ ObjectId válido, buscando tarea...');
+
+    // Buscar la tarea con timeout manual
+    const taskPromise = Task.findById(taskId)
+      .populate('project', 'name owner team')
       .populate('assignedTo', 'name email avatar')
-      .populate('createdBy', 'name email avatar')
-      .populate('project', 'name')
-      .populate('comments.user', 'name email avatar');
+      .populate('createdBy', 'name email avatar');
+
+    // Agregar timeout manual de 5 segundos
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Database timeout')), 5000)
+    );
+
+    const task = await Promise.race([taskPromise, timeoutPromise]);
+
+    console.log('📋 Tarea encontrada:', task ? 'SÍ' : 'NO');
 
     if (!task) {
+      console.log('❌ Tarea no encontrada en la base de datos');
       return res.status(404).json({
         success: false,
         message: 'Tarea no encontrada'
       });
     }
 
-    // Verificar permisos - el usuario debe tener acceso al proyecto
-    const project = await Project.findById(task.project._id);
+    console.log('📋 Datos de la tarea:');
+    console.log('   - Título:', task.title);
+    console.log('   - Proyecto:', task.project?.name);
+    console.log('   - Estado:', task.status);
+
+    // Verificar acceso al proyecto
+    console.log('🔒 Verificando permisos...');
     
-    if (!project) {
+    if (!task.project) {
+      console.log('❌ Proyecto no encontrado para la tarea');
       return res.status(404).json({
         success: false,
         message: 'Proyecto asociado no encontrado'
       });
     }
 
-    // Verificar acceso al proyecto
-    const hasAccess = project.owner.toString() === req.user.id ||
-                     project.team.some(member => member.user.toString() === req.user.id) ||
-                     req.user.role === 'admin';
+    const hasAccess = 
+      task.project.owner.toString() === req.user.id ||
+      task.project.team.some(member => member.user.toString() === req.user.id) ||
+      req.user.role === 'admin';
+
+    console.log('🔒 Permisos:', hasAccess ? 'PERMITIDO' : 'DENEGADO');
 
     if (!hasAccess) {
       return res.status(403).json({
@@ -157,7 +181,7 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    console.log('✅ Tarea encontrada:', task.title);
+    console.log('✅ Enviando respuesta exitosa');
 
     res.status(200).json({
       success: true,
@@ -165,14 +189,89 @@ router.get('/:id', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error al obtener detalles de tarea:', error);
+    console.log('🚨 === ERROR EN GET TASK ===');
+    console.log('🚨 Error completo:', error);
+    console.log('🚨 Mensaje:', error.message);
+    console.log('🚨 Stack:', error.stack);
+    console.log('🚨 ========================');
+    
     res.status(500).json({
       success: false,
-      message: 'Error del servidor al obtener detalles de tarea',
+      message: 'Error del servidor al obtener tarea',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
+
+// // @desc    Obtener detalles de una tarea específica
+// // @route   GET /api/tasks/:id
+// // @access  Private
+// router.get('/:id', async (req, res) => {
+//   try {
+//     const taskId = req.params.id;
+    
+//     console.log('🔍 Buscando tarea con ID:', taskId);
+
+//     // Verificar si es un ObjectId válido
+//     if (!mongoose.Types.ObjectId.isValid(taskId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'ID de tarea inválido'
+//       });
+//     }
+
+//     // Buscar la tarea con datos poblados
+//     const task = await Task.findById(taskId)
+//       .populate('assignedTo', 'name email avatar')
+//       .populate('createdBy', 'name email avatar')
+//       .populate('project', 'name')
+//       .populate('comments.user', 'name email avatar');
+
+//     if (!task) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Tarea no encontrada'
+//       });
+//     }
+
+//     // Verificar permisos - el usuario debe tener acceso al proyecto
+//     const project = await Project.findById(task.project._id);
+    
+//     if (!project) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Proyecto asociado no encontrado'
+//       });
+//     }
+
+//     // Verificar acceso al proyecto
+//     const hasAccess = project.owner.toString() === req.user.id ||
+//                      project.team.some(member => member.user.toString() === req.user.id) ||
+//                      req.user.role === 'admin';
+
+//     if (!hasAccess) {
+//       return res.status(403).json({
+//         success: false,
+//         message: 'No tienes permisos para ver esta tarea'
+//       });
+//     }
+
+//     console.log('✅ Tarea encontrada:', task.title);
+
+//     res.status(200).json({
+//       success: true,
+//       data: task
+//     });
+
+//   } catch (error) {
+//     console.error('❌ Error al obtener detalles de tarea:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error del servidor al obtener detalles de tarea',
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//     });
+//   }
+// });
 
 // @desc    Actualizar una tarea específica
 // @route   PUT /api/tasks/:id
